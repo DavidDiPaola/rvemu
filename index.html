@@ -62,63 +62,108 @@ let rvscreen = {
 };
 
 let rvserial = {
-	element: null,
-	infifo_length: 128,
-	infifo: null,
+	output: {
+		element: null,
+
+		init: function init() {
+			this.element = document.getElementById("rvserial_output");
+			if (!this.element) {
+				console.log("can't find rvserial textarea output element");
+				return;
+			}
+
+			this.clear();
+		},
+
+		clear: function clear() {
+			this.element.value = "";
+		},
+
+		put: function put(ch) {
+			this.element.value += String.fromCharCode(ch);
+		},
+	},
+
+	input: {
+		inputElement: null,
+		fifoElement: null,
+		buffer: [],
+		empty: true,
+
+		init: function init() {
+			this.inputElement = document.getElementById("rvserial_input");
+			if (!this.inputElement) {
+				console.log("can't find rvserial input element");
+				return;
+			}
+
+			this.fifoElement = document.getElementById("rvserial_fifo");
+			if (!this.fifoElement) {
+				console.log("can't find rvserial FIFO element");
+				return;
+			}
+			this.fifoElement.value = "";
+		},
+
+		put: function put(ch) {
+			this.buffer.push(ch);
+
+			this.empty = false;
+
+			this.showFifo();
+		},
+
+		get: function get() {
+			let ch = 0;
+
+			if (this.buffer.length != 0) {
+				let str = this.buffer.shift();
+				ch = str.charCodeAt(0);
+
+				if (this.buffer.length == 0) {
+					this.empty = true;
+				}
+			}
+
+			this.showFifo();
+
+			return ch;
+		},
+
+		onsend: function onsend() {
+			let str = this.inputElement.value;
+			for (let i=0; i<str.length; i++) {
+				this.put(str[i]);
+			}
+
+			this.inputElement.value = "";
+		},
+
+		showFifo: function showFifo() {
+			let str = "";
+			for (let i=0; i<this.buffer.length; i++) {
+				str += this.buffer[i];
+			}
+
+			this.fifoElement.value = str;
+		},
+	},
 
 	init: function init() {
-		this.element = document.getElementById("rvserial");
-		if (!this.element) {
-			console.log("can't find rvserial textarea element");
-			return;
-		}
-
-		this.element.onkeydown = this.onkeydown;
-
-		this.infifo = new Uint32Array(this.infifo_length);
-
-		this.clear();
+		this.output.init();
+		this.input.init();
 	},
 	
-	onkeydown: function onkeydown(kbe) {
-		let key = kbe.key;
-
-		if ( (key == "Shift") || (key == "Control") || (key == "Alt") ) {
-			return;
-		}
-
-		// DEBUG
-		let str = "";
-		if (kbe.ctrlKey) {  // not working
-			str += "^";
-		}
-		str += key;
-		console.log(key);
+	put: function put(ch) {
+		this.output.put(ch);
 	},
 
-	clear: function clear() {
-		this.element.value = "";
+	get: function get() {
+		return this.input.get();
 	},
 
-	putch: function putch(ch) {
-		this.element.value += String.fromCharCode(ch);
-	},
-
-	getch: function getch(ch) {
-		return "?".charCodeAt(0);
-	},
-
-	print: function print(string) {
-		this.element.value += string;
-	},
-
-	printnl: function printnl() {
-		this.element.value += "\n";
-	},
-
-	println: function println(string) {
-		this.print(string);
-		this.printnl();
+	onsend: function onsend() {
+		this.input.onsend();
 	},
 };
 
@@ -142,9 +187,7 @@ window.onload = function onload() {
 	rvscreen.init();
 	rvserial.init();
 
-	rvserial.println("lol");
-	rvserial.putch(0x45);
-	rvserial.putch(rvserial.getch());
+	rvserial.put(0x45);
 
 	let buffer = rvscreen.newBuffer();
 	buffer[0] = 0xFF00FF;
@@ -155,7 +198,10 @@ window.onload = function onload() {
 <body>
 	<canvas id="rvcanvas" height="64" width="64"></canvas>
 
-	<textarea id="rvserial" cols=40 rows=20 readonly></textarea>
+	<textarea id="rvserial_output" cols=40 rows=20 readonly></textarea>
+	<textarea id="rvserial_fifo" cols=40 rows=1 readonly></textarea>
+	<input type="text" id="rvserial_input" />
+	<button id="rvserial_send" onclick="rvserial.onsend()">Send</button>
 
 	<textarea id="rvcode" cols=40 rows=20 spellcheck="false"></textarea>
 
