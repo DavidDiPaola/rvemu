@@ -63,6 +63,8 @@ let rvscreen = {
 
 let rvserial = {
 	element: null,
+	infifo_length: 128,
+	infifo: null,
 
 	init: function init() {
 		this.element = document.getElementById("rvserial");
@@ -71,7 +73,27 @@ let rvserial = {
 			return;
 		}
 
+		this.element.onkeydown = this.onkeydown;
+
+		this.infifo = new Uint32Array(this.infifo_length);
+
 		this.clear();
+	},
+	
+	onkeydown: function onkeydown(kbe) {
+		let key = kbe.key;
+
+		if ( (key == "Shift") || (key == "Control") || (key == "Alt") ) {
+			return;
+		}
+
+		// DEBUG
+		let str = "";
+		if (kbe.ctrlKey) {  // not working
+			str += "^";
+		}
+		str += key;
+		console.log(key);
 	},
 
 	clear: function clear() {
@@ -116,7 +138,7 @@ let rvcode = {
 	},
 };
 
-window.onload = function main() {
+window.onload = function onload() {
 	rvscreen.init();
 	rvserial.init();
 
