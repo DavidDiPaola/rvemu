@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" >
+<title>RV ASM</title>
+<style>
+#rvcanvas {
+	width: 20%;
+
+	border-width: 1px;
+	border-style: solid;
+
+	/* nearest neighbor scaling */
+	image-rendering: -webkit-optimize-contrast; /* webkit */
+	image-rendering: -moz-crisp-edges /* Firefox */
+}
+
+#rvserail {
+	font-family: monospace;
+}
+
+#rvcode {
+	font-family: monospace;
+}
+</style>
+<script>
+let rvscreen = {
+	canvas: null,
+	context: null,
+	width: 0,
+	height: 0,
+
+	init: function init() {
+		this.canvas = document.getElementById("rvcanvas");
+		if (!this.canvas) {
+			console.log("can't find canvas element");
+			return;
+		}
+
+		this.context = this.canvas.getContext("2d");
+		this.width = this.canvas.width;
+		this.height = this.canvas.height;
+
+		this.context.clearRect(0, 0, this.width, this.height);
+	},
+
+	newBuffer: function newBuffer() {
+		return new Uint32Array(this.width * this.height);
+	},
+
+	set: function set(buffer) {
+		let imgd = this.context.createImageData(this.width, this.height);
+		for (let i=0; i<imgd.data.length; i+=4) {
+			let pixel = buffer[i/4];
+			imgd.data[i+0] = (pixel>>16) & 0xFF;
+			imgd.data[i+1] = (pixel>> 8) & 0xFF;
+			imgd.data[i+2] = (pixel>> 0) & 0xFF;
+			imgd.data[i+3] = 0xFF;
+		}
+		this.context.putImageData(imgd, 0, 0);
+	},
+};
+
+let rvserial = {
+	element: null,
+
+	init: function init() {
+		this.element = document.getElementById("rvserial");
+		if (!this.element) {
+			console.log("can't find rvserial textarea element");
+			return;
+		}
+
+		this.clear();
+	},
+
+	clear: function clear() {
+		this.element.value = "";
+	},
+
+	putch: function putch(ch) {
+		this.element.value += String.fromCharCode(ch);
+	},
+
+	getch: function getch(ch) {
+		return "?".charCodeAt(0);
+	},
+
+	print: function print(string) {
+		this.element.value += string;
+	},
+
+	printnl: function printnl() {
+		this.element.value += "\n";
+	},
+
+	println: function println(string) {
+		this.print(string);
+		this.printnl();
+	},
+};
+
+let rvcode = {
+	element: null,
+
+	init: function init() {
+		this.element = document.getElementById("rvcode");
+		if (!this.element) {
+			console.log("can't find rvcode textarea element");
+			return;
+		}
+	},
+
+	get: function get() {
+		return this.element.value;
+	},
+};
+
+window.onload = function main() {
+	rvscreen.init();
+	rvserial.init();
+
+	rvserial.println("lol");
+	rvserial.putch(0x45);
+	rvserial.putch(rvserial.getch());
+
+	let buffer = rvscreen.newBuffer();
+	buffer[0] = 0xFF00FF;
+	rvscreen.set(buffer);
+}
+</script>
+</head>
+<body>
+	<canvas id="rvcanvas" height="64" width="64"></canvas>
+
+	<textarea id="rvserial" cols=40 rows=20 readonly></textarea>
+
+	<textarea id="rvcode" cols=40 rows=20></textarea>
+
+	<table>
+		<tr> <td id="key0" /> <td id="value0" />
+	</table>
+</body>
+</html>
