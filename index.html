@@ -4,26 +4,62 @@
 <meta charset="UTF-8" >
 <title>RV ASM</title>
 <style>
+* {
+	background-color: black;
+	color: white;
+}
+
+body {
+	display: flex;
+}
+
+@media (orientation: landscape) {
+	body {
+		flex-direction: row;
+	}
+}
+
+@media (orientation: portrait) {
+	body {
+		flex-direction: column;
+	}
+}
+
+.monospace {
+	font-family: monospace;
+}
+
+/* TODO screen is tiny */
 #rvcanvas {
-	width: 20%;
-
-	border-width: 1px;
-	border-style: solid;
-
 	/* nearest neighbor scaling */
 	image-rendering: -webkit-optimize-contrast; /* webkit */
 	image-rendering: -moz-crisp-edges /* Firefox */
 }
 
-#rvserail {
-	font-family: monospace;
-}
-
-#rvcode {
-	font-family: monospace;
+.rvdebug_button {
+	width: 8em;
 }
 </style>
 <script>
+let util = {
+	hex32: function hex32(val) {
+		return ("00000000" + val.toString(16)).substr(-8);
+	},
+};
+
+let rvemu = {
+	pc: 0,
+	x: null,
+	mem: null,
+	mem_size: (1 * 1024 * 1024) / 4,
+
+	init: function init() {
+		this.x = new Uint32Array(16);
+
+		this.mem = new Uint32Array(this.mem_size);
+	}
+};
+
 let rvscreen = {
 	canvas: null,
 	context: null,
@@ -33,7 +69,7 @@ let rvscreen = {
 	init: function init() {
 		this.canvas = document.getElementById("rvcanvas");
 		if (!this.canvas) {
-			console.log("can't find canvas element");
+			console.log("ERROR: can't find canvas element");
 			return;
 		}
 
@@ -43,6 +79,8 @@ let rvscreen = {
 
 		this.context.clearRect(0, 0, this.width, this.height);
 	},
+
+	/* TODO use rvemu.mem */
 
 	newBuffer: function newBuffer() {
 		return new Uint32Array(this.width * this.height);
@@ -68,7 +106,7 @@ let rvserial = {
 		init: function init() {
 			this.element = document.getElementById("rvserial_output");
 			if (!this.element) {
-				console.log("can't find rvserial textarea output element");
+				console.log("ERROR: can't find rvserial textarea output element");
 				return;
 			}
 
@@ -93,13 +131,13 @@ let rvserial = {
 		init: function init() {
 			this.inputElement = document.getElementById("rvserial_input");
 			if (!this.inputElement) {
-				console.log("can't find rvserial input element");
+				console.log("ERROR: can't find rvserial input element");
 				return;
 			}
 
 			this.fifoElement = document.getElementById("rvserial_fifo");
 			if (!this.fifoElement) {
-				console.log("can't find rvserial FIFO element");
+				console.log("ERROR: can't find rvserial FIFO element");
 				return;
 			}
 			this.fifoElement.value = "";
@@ -173,7 +211,7 @@ let rvcode = {
 	init: function init() {
 		this.element = document.getElementById("rvcode");
 		if (!this.element) {
-			console.log("can't find rvcode textarea element");
+			console.log("ERROR: can't find rvcode textarea element");
 			return;
 		}
 	},
@@ -183,30 +221,182 @@ let rvcode = {
 	},
 };
 
+let rvreg = {
+	pcElement: null,
+	regElements: [],
+
+	init: function init() {
+		this.pcElement = document.getElementById("rvreg_pc");
+		if (!this.pcElement) {
+			console.log("ERROR: can't find rvreg_pc element");
+			return;
+		}
+
+		for (let i=0; i<16; i++) {
+			let name = "rvreg_" + i;
+			let elem = document.getElementById(name);
+			if (!elem) {
+				console.log("ERROR: can't find rvreg "+name+" element");
+				return;
+			}
+
+			this.regElements.push(elem);
+		}
+
+		this.update();
+	},
+
+	update: function update() {
+		this.pcElement.innerText = util.hex32(rvemu.pc);
+		
+		for (let i=0; i<16; i++) {
+			this.regElements[i].innerText = util.hex32(rvemu.x[i]);
+		}
+	},
+};
+
+let rvmem = {
+	displayElement: null,
+	blockElement: null,
+	block_size: 0x100,
+	block_count: rvemu.mem_size / this.block_size,
+
+	init: function init() {
+		this.displayElement = document.getElementById("rvmem_display");
+		if (!this.displayElement) {
+			console.log("ERROR: can't find rvmem element");
+			return;
+		}
+
+		this.blockElement = document.getElementById("rvmem_block");
+		if (!this.blockElement) {
+			console.log("ERROR: can't find rvmem block element");
+			return;
+		}
+		this.blockElement.value = "0";
+		
+		this.update(0);
+	},
+
+	update: function update(block) {
+		if (block < 0) {
+			block = 0;
+		}
+		else if (block >= this.block_count) {
+			block = block_count - 1;
+		}
+		else {
+			this.displayElement.value = "";
+
+			let start = block * (this.block_size / 4);
+			let end = start + (this.block_size / 4);
+			let m = rvemu.mem;
+			for (let i=start; i<end; i+=4) {
+				if (i != start) {
+					this.displayElement.value += "\n";
+				}
+
+				this.displayElement.value += util.hex32(i*4)
+					+ ": "
+					+ util.hex32(m[i+0])
+					+ " "
+					+ util.hex32(m[i+1])
+					+ " "
+					+ util.hex32(m[i+2])
+					+ " "
+					+ util.hex32(m[i+3])
+				;
+			}
+		}
+
+		this.blockElement.value = block.toString();
+	},
+
+	block_onchange: function block_onchange() {
+		let block = parseInt(this.blockElement.value);
+		this.update(block);
+	},
+
+	down_onclick: function down_onlcick() {
+		let block = parseInt(this.blockElement.value);
+		this.update(block - 1);
+	},
+
+	up_onclick: function up_onlcick() {
+		let block = parseInt(this.blockElement.value);
+		this.update(block + 1);
+	},
+};
+
+
 window.onload = function onload() {
+	rvemu.init();
 	rvscreen.init();
 	rvserial.init();
-
-	rvserial.put(0x45);
+	rvreg.init();
+	rvmem.init();
 
 	let buffer = rvscreen.newBuffer();
 	buffer[0] = 0xFF00FF;
 	rvscreen.set(buffer);
+
+	rvserial.put(0x45);
 }
 </script>
 </head>
 <body>
-	<canvas id="rvcanvas" height="64" width="64"></canvas>
+	<div class="chunk">
+		<canvas id="rvcanvas" height="64" width="64"></canvas>
+	</div>
 
-	<textarea id="rvserial_output" cols=40 rows=20 readonly></textarea>
-	<textarea id="rvserial_fifo" cols=40 rows=1 readonly></textarea>
-	<input type="text" id="rvserial_input" />
-	<button id="rvserial_send" onclick="rvserial.onsend()">Send</button>
+	<div class="chunk">
+		<table>
+			<tr><td colspan=2> <textarea id="rvserial_output" class="monospace" cols=40 rows=20 readonly title="Serial output"></textarea> </td></tr>
+			<tr><td colspan=2> <textarea id="rvserial_fifo" class="monospace" cols=40 rows=1 readonly title="Serial input FIFO state"></textarea> </td></tr>
+			<tr>
+				<td> <input type="text" id="rvserial_input" class="monospace" title="Type serial input here" /> </td>
+				<td> <button onclick="rvserial.onsend()" title="Click to send serial input">Send</button> </td>
+			</tr>
+		</table>
+	</div>
 
-	<textarea id="rvcode" cols=40 rows=20 spellcheck="false"></textarea>
+	<div class="chunk">
+		<textarea id="rvcode" cols=40 rows=20 spellcheck="false" class="monospace"></textarea>
+	</div>
 
-	<table>
-		<tr> <td id="key0" /> <td id="value0" />
-	</table>
+	<div class="chunk">
+		<table class="monospace">
+			<tr>
+				<td rowspan=9><table>
+					<tr><td> <button class="rvdebug_button" title="Run the code (F5)">Run</button> </td></tr>
+					<tr><td> <button class="rvdebug_button" title="Stop running the code (F8)">Break</button> </td></tr>
+					<tr><td> <button class="rvdebug_button" title="Reset the system (F9)">Reset</button> </td></tr>
+					<tr><td> <button class="rvdebug_button" title="Step to next instruction, but not into subroutines (F10)">Step over</button> </td></tr>
+					<tr><td> <button class="rvdebug_button" title="Step to next instruction (F11)">Step into</button> </td></tr>
+				</table></td>
+				<th>pc</th> <td id="rvreg_pc" />
+			</tr>
+			<tr> <th>x0</th> <td id="rvreg_0" /> <th>x8</th>  <td id="rvreg_8"  /> </tr>
+			<tr> <th>ra</th> <td id="rvreg_1" /> <th>x9</th>  <td id="rvreg_9"  /> </tr>
+			<tr> <th>sp</th> <td id="rvreg_2" /> <th>x10</th> <td id="rvreg_10" /> </tr>
+			<tr> <th>x3</th> <td id="rvreg_3" /> <th>x11</th> <td id="rvreg_11" /> </tr>
+			<tr> <th>x4</th> <td id="rvreg_4" /> <th>x12</th> <td id="rvreg_12" /> </tr>
+			<tr> <th>x5</th> <td id="rvreg_5" /> <th>x13</th> <td id="rvreg_13" /> </tr>
+			<tr> <th>x6</th> <td id="rvreg_6" /> <th>x14</th> <td id="rvreg_14" /> </tr>
+			<tr> <th>x7</th> <td id="rvreg_7" /> <th>x15</th> <td id="rvreg_15" /> </tr>
+		</table>
+	</div>
+
+	<div class="chunk" id="rvmem">
+		<table class="monospace">
+			<tr><td> <textarea id="rvmem_display" cols=45 rows=16 readonly></textarea> </td></tr>
+			<tr><td>
+				<textarea id="rvmem_block" cols=10 rows=1 onchange="rvmem.block_onchange()" title="The current block of memory being displayed"></textarea>
+				<button onclick="rvmem.down_onclick()" title="Previous block (F1)">-</button>
+				<button onclick="rvmem.up_onclick()" title="Next block (F2)">+</button>
+			</td></tr>
+		</table>
+	</div>
+
 </body>
 </html>
