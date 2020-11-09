@@ -67,6 +67,7 @@ let rvemu = {
 	},
 
 	load: function load(buffer) {
+		/* TODO endianness */
 		const input = new Uint32Array(buffer);
 		for (let i=0; i<input.length; i++) {
 			this.mem[i] = input[i];
@@ -425,7 +426,7 @@ window.onload = function onload() {
 					<tr><td> <button class="rvdebug_button" title="Step to next instruction (F11)">Step into</button> </td></tr>
 					<tr><td>
 						<input type="file" id="rvdebug_file" style="display: none;" />
-						<button class="rvdebug_button" onclick="document.getElementById('rvdebug_file').click();">Upload</button>
+						<button class="rvdebug_button" onclick="document.getElementById('rvdebug_file').click();" title="Load binary file into memory">Load</button>
 					</td></tr>
 				</table></td>
 				<th>pc</th> <td id="rvdebug_pc" />
@@ -450,6 +451,154 @@ window.onload = function onload() {
 				<button onclick="rvmem.up_onclick()" class="rvmem_button" title="Next block (F2)">+</button>
 			</td></tr>
 		</table>
+	</div>
+
+	<div class="chunk">
+<textarea cols=40 rows=20 spellcheck="false" class="monospace" readonly>
+========================================
+            SPECIFICATIONS
+========================================
+CPU: RISC-V 32bit (RV32E)
+RAM: 1MiB (20KiB reserved for IO)
+Screen: 64x64 pixels, 24bit RGB
+Sound: 3 square waves, 1 noise
+Gamepad: D-pad, ABXY, Start
+Timers
+Serial terminal
+
+========================================
+            INSTRUCTION SET
+========================================
+Load:
+lw    rd, off(rs) (rd = mem[rs+off])
+lh    rd, off(rs) (16bit lw)
+lhu   rd, off(rs) (unsigned lh)
+lb    rd, off(rs) (8bit lw)
+lbu   rd, off(rs) (unsigned lb)
+(off is 12bit signed)
+lui   rd, imm (rd = imm << 12)
+auipc rd, imm (rd = PC + (imm << 12))
+(imm is 20bit unsigned)
+
+Store:
+sw rs2, off(rs1) (mem[rs1+off] = rs2)
+sh rs2, off(rs1) (16bit sw)
+sb rs2, off(rs1) (8bit sw)
+(off is 12bit signed)
+
+Math:
+add  rd, rs1, rs2 (rd = rs1 + rs2)
+addi rd, rs1, imm (rd = rs1 + imm)
+sub  rd, rs1, rs2 (rd = rs1 - rs2)
+sra  rd, rs1, rs2 (rd = rs1 / 2^rs2)
+srai rd, rs1, imm (rd = rs1 / 2^imm)
+(imm is 12bit signed)
+
+Bitmath:
+and  rd, rs1, rs2 (rd = rs1 & rs2)
+andi rd, rs1, imm (rd = rs1 & imm)
+or   rd, rs1, rs2 (rd = rs1 | rs2)
+ori  rd, rs1, imm (rd = rs1 | imm)
+xor  rd, rs1, rs2 (rd = rs1 ^ rs2)
+xori rd, rs1, imm (rd = rs1 ^ imm)
+sll  rd, rs1, rs2 (rd = rs1 << rs2)
+slli rd, rs1, imm (rd = rs1 << imm)
+srl  rd, rs1, rs2 (rd = rs1 >> rs2)
+srli rd, rs1, imm (rd = rs1 >> imm)
+(imm is 12bit)
+
+Compare:
+slt   rd, rs1, rs2 (rd=(rs1<rs2)?1:0)
+sltu  rd, rs1, rs2 (unsigned slt)
+slti  rd, rs1, imm (rd=(rs1<imm)?1:0)
+sltiu rd, rs1, imm (unsigned slti)
+(imm is 12bit)
+
+Branch:
+beq  rs1, rs2, imm (rs1==rs2 ? PC+=imm)
+bne  rs1, rs2, imm (rs1!=rs2 ? PC+=imm)
+blt  rs1, rs2, imm (rs1<rs2 ? PC+=imm)
+bltu rs1, rs2, imm (unsigned blt)
+bge  rs1, rs2, imm (rs1>=rs2 ? PC+=imm)
+bgeu rs1, rs2, imm (unsigned bge)
+(imm is 13bit ?signed?, 16bit aligned)
+
+Jump:
+jal  rd, imm (rd=PC+4, PC+=imm)
+(imm is 21bit ?signed?, 16bit aligned)
+jalr rd, rs1, imm (PC+rs1 jal)
+(imm is 12bit ?signed?)
+
+Special:
+ebreak (break)
+
+========================================
+          ASSEMBLER DIRECTIVES
+========================================
+
+========================================
+               MEMORY MAP
+========================================
+0x00000-FAFFF Code
+0xFB000-FEFFF screen framebuffer
+0xFF000-FF0FF serial registers
+0xFF100-FF1FF timer registers
+0xFF200-FF2FF sound registers
+0xFF300-FF3FF gamepad registers
+0xFF400-FFFxx reserved
+0xFFFxx-FFFFF interrupt vector addr.s
+
+All registers are 32bit.
+
+========================================
+            SERIAL REGISTERS
+========================================
+0xFF000 control flags
+  bit 4 -- input FIFO not empty flag
+  bits 3-0 -- input FIFO interrupt
+              threshold (set to 0 to
+	      disable this interrupt)
+0xFF004 read character (from input FIFO)
+0xFF008 write character
+
+========================================
+            TIMER REGISTERS
+========================================
+0xFF100 control flags
+  bit 1 -- enable timer interrupt
+  bit 0 -- enable timer
+0xFF104 timer value
+0xFF108 timer compare value
+
+========================================
+            SOUND REGISTERS
+========================================
+0xFF200 control flags
+0xFF2xx channel 1 frequency
+0xFF2xx channel 1 volume
+0xFF2xx channel 2 frequency
+0xFF2xx channel 2 volume
+0xFF2xx channel 3 frequency
+0xFF2xx channel 3 volume
+0xFF2xx noise volume
+0xFF2xx noise frequency
+
+========================================
+           GAMEPAD REGISTERS
+========================================
+0xFF300 control flags
+0xFF304 state
+  bit 8 - Start (Enter key)
+  bit 7 - Y button (S key)
+  bit 6 - X button (A key)
+  bit 5 - B button (X key)
+  bit 4 - A button (Z key)
+  bit 3 - Right
+  bit 2 - Left
+  bit 1 - Down
+  bit 0 - Up
+0xFF308 prior state
+</textarea>
 	</div>
 
 </body>
