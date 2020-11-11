@@ -157,6 +157,91 @@ let cpu = {
 		this.haltSet = true;
 	},
 
+	decode: {
+		// TODO handle registers >15
+
+		r: function r(instr) {
+			return {
+				type: "r",
+				rd:     (instr >>  7) &   0b01111,
+				funct3: (instr >> 12) &     0b111,
+				rs1:    (instr >> 15) &   0b01111,
+				rs2:    (instr >> 20) &   0b01111,
+				funct7: (instr >> 25) & 0b1111111,
+			};
+		},
+
+		i: function i(instr) {
+			return {
+				type: "i",
+				rd:     (instr >>  7) &        0b01111,
+				funct3: (instr >> 12) &          0b111,
+				rs1:    (instr >> 15) &        0b01111,
+				imm:    (instr >> 20) & 0b111111111111,
+			};
+		},
+
+		s: function s(instr) {
+			return {
+				type: "s",
+				imm:    (((instr >> 25) & 0b1111111) << 5) | ((instr >> 7) & 0b11111),
+				funct3: (instr >> 12) &   0b111,
+				rs1:    (instr >> 15) & 0b01111,
+				rs2:    (instr >> 20) & 0b01111,
+			};
+		},
+
+		// TODO b-type
+		b: function b(instr) {
+			return {
+				type: "b",
+			};
+		},
+
+		u: function u(instr) {
+			return {
+				type: "u",
+				rd:  (instr >>  7) &                0b01111,
+				imm: (instr >> 12) & 0b11111111111111111111,
+			};
+		},
+
+		// TODO j-type
+		j: function j(instr) {
+			return {
+				type: "j",
+			};
+		},
+	},
+
+	decodeError: function decodeError(dec) {
+		let name = "";
+		switch (dec.type) {
+		case "r":
+			name = "R-type";
+			break;
+		case "i":
+			name = "I-type";
+			break;
+		case "s":
+			name = "S-type";
+			break;
+		case "b":
+			name = "B-type";
+			break;
+		case "u":
+			name = "U-type";
+			break;
+		case "j":
+			name = "J-type";
+			break;
+		}
+
+		console.log("ERROR: unknown "+name+" instruction: " + JSON.stringify(dec));
+
+		this.halt();
+	},
+
 	step: function step() {
 		if (this.haltSet) {
 			return;
@@ -166,142 +251,123 @@ let cpu = {
 		this.pc += 4;
 
 		// TODO error messages for invalid instructions
-		// TODO handle registers >15
+		let dec = instr;
 		const opcode = instr & 0b1111111;
-		const funct3 = (instr >> 12) & 0b111;
-		let funct7 = 0;
-		let rd = 0;
-		let rs1 = 0;
-		let rs2 = 0;
-		let imm = 0;
 		switch (opcode) {
-		case 0b0110011:  // arithmetic instructions
-			rd     = (instr >>  7) & 0b01111;
-			rs1    = (instr >> 15) & 0b01111;
-			rs2    = (instr >> 20) & 0b01111;
-			funct7 = (instr >> 25);
-			switch (funct3) {
+		case 0b0110011:  // arithmetic instructions (R-type)
+			dec = this.decode.r(instr);
+			switch (dec.funct3) {
 			case 0x0:
-				switch (funct7) {
+				switch (dec.funct7) {
 				case 0x00:  // add
-					this.x[rd] = this.x[rs1] + this.x[rs2];
+					this.x[dec.rd] = this.x[dec.rs1] + this.x[dec.rs2];
 					break;
 				case 0x20:  // sub
-					this.x[rd] = this.x[rs1] + this.x[rs2];
+					this.x[dec.rd] = this.x[dec.rs1] + this.x[dec.rs2];
 					break;
 				default:
-					console.log("unimplemented op (funct3="+funct3+" funct7="+funct7+"): "+opcode);
-					this.halt();
+					this.decodeError(dec);
 					break;
 				}
 				break;
 			case 0x4:  // xor TODO test
-				this.x[rd] = this.x[rs1] ^ this.x[rs2];
+				this.x[dec.rd] = this.x[dec.rs1] ^ this.x[dec.rs2];
 				break;
 			case 0x6:  // or TODO test
-				this.x[rd] = this.x[rs1] | this.x[rs2];
+				this.x[dec.rd] = this.x[dec.rs1] | this.x[dec.rs2];
 				break;
 			case 0x7:  // or TODO test
-				this.x[rd] = this.x[rs1] & this.x[rs2];
+				this.x[dec.rd] = this.x[dec.rs1] & this.x[dec.rs2];
 				break;
 			case 0x1:  // sll (shift left logical) TODO test
-				this.x[rd] = this.x[rs1] << this.x[rs2];
+				this.x[dec.rd] = this.x[dec.rs1] << this.x[dec.rs2];
 				break;
 			case 0x5:
-				switch (funct7) {
+				switch (dec.funct7) {
 				case 0x00:  // srl (shift right logical) TODO test
-					this.x[rd] = this.x[rs1] >> this.x[rs2];
+					this.x[dec.rd] = this.x[dec.rs1] >> this.x[dec.rs2];
 					break;
-				case 0x20:  // srl (shift right arithmetic) TODO msb, test
-					this.x[rd] = this.x[rs1] >> this.x[rs2];
+				case 0x20:  // sra (shift right arithmetic) TODO msb, test
+					this.x[dec.rd] = this.x[dec.rs1] >> this.x[dec.rs2];
 					break;
 				default:
-					console.log("unimplemented op (funct3="+funct3+" funct7="+funct7+"): "+opcode);
-					this.halt();
+					this.decodeError(dec);
 					break;
 				}
 				break;
 			case 0x2:  // slt (set less than) TODO test
-				this.x[rd] = this.x[rs1] < this.x[rs2] ? 1 : 0;
+				this.x[dec.rd] = this.x[dec.rs1] < this.x[dec.rs2] ? 1 : 0;
 				break;
 			case 0x3:  // stlu (set less than unsigned) TODO test
-				this.x[rd] = this.x[rs1] < this.x[rs2] ? 1 : 0;
+				this.x[dec.rd] = this.x[dec.rs1] < this.x[dec.rs2] ? 1 : 0;
 				break;
 			default:
-				console.log("unimplemented op (funct3="+funct3+" funct7="+funct7+"): "+opcode);
-				this.halt();
+				this.decodeError(dec);
 				break;
 			}
 			break;
-		case 0b0010011:  // arithmetic immediate instructions
-			rd  = (instr >>  7) & 0b01111;
-			rs1 = (instr >> 15) & 0b01111;
-			imm = (instr >> 20);
-			switch (funct3) {
+		case 0b0010011:  // arithmetic immediate instructions (I-type)
+			dec = this.decode.i(instr);
+			switch (dec.funct3) {
 			case 0x0:  // addi (add immediate)
-				this.x[rd] = this.x[rs1] + imm;
+				this.x[dec.rd] = this.x[dec.rs1] + dec.imm;
 				break;
 			case 0x4:  // xori (xor immediate) todo test
-				this.x[rd] = this.x[rs1] ^ imm;
+				this.x[dec.rd] = this.x[dec.rs1] ^ dec.imm;
 				break;
 			case 0x6:  // ori (or immediate) todo test
-				this.x[rd] = this.x[rs1] | imm;
+				this.x[dec.rd] = this.x[dec.rs1] | dec.imm;
 				break;
 			case 0x7:  // andi (and immediate) todo test
-				this.x[rd] = this.x[rs1] & imm;
+				this.x[dec.rd] = this.x[dec.rs1] & dec.imm;
 				break;
 			case 0x1:  // slli (shift left logical immediate) todo test
-				this.x[rd] = this.x[rs1] << (imm & 0b11111);
+				this.x[dec.rd] = this.x[dec.rs1] << (dec.imm & 0b11111);
 				break;
 			case 0x5:
-				switch (imm >> 5) {
+				switch (dec.imm >> 5) {
 				case 0x00:  // srli (shift right logical immediate) todo test
-					this.x[rd] = this.x[rs1] >> (imm & 0b11111);
+					this.x[dec.rd] = this.x[dec.rs1] >> (dec.imm & 0b11111);
 					break;
 				case 0x20:  // srai (shift right arithmetic immediate) todo do msb, test
-					this.x[rd] = this.x[rs1] >> (imm & 0b11111);
+					this.x[dec.rd] = this.x[dec.rs1] >> (dec.imm & 0b11111);
 					break;
 				default:
-					console.log("unimplemented op (funct3="+funct3+" imm[11:5]="+(imm >> 5)+"): "+opcode);
-					this.halt();
+					this.decodeError(dec);
 					break;
 				}
 				break;
 			case 0x2: // slti (set less than immediate) todo do msb, test
-				this.x[rd] = this.x[rs1] < imm ? 1 : 0;
+				this.x[dec.rd] = this.x[dec.rs1] < dec.imm ? 1 : 0;
 				break;
 			case 0x3: // sltiu (set less than immediate unsigned) todo do msb, test
-				this.x[rd] = this.x[rs1] < imm ? 1 : 0;
+				this.x[dec.rd] = this.x[dec.rs1] < dec.imm ? 1 : 0;
 				break;
 			default:
-				console.log("unimplemented op (funct3="+funct3+"): "+opcode);
-				this.halt();
+				this.decodeError(dec);
 				break;
 			}
 			break;
-		case 0b0000011:  // load instructions
-			rd  = (instr >>  7) & 0b01111;
-			rs1 = (instr >> 15) & 0b01111;
-			imm = (instr >> 20);
-			switch (funct3) {
+		case 0b0000011:  // load instructions (I-type)
+			dec = this.decode.i(instr);
+			switch (dec.funct3) {
 			case 0x0:  // lb (load byte)
-				this.x[rd] = mem.read(this.x[rs1] + imm) & 0xFF;  // TODO sign extend, test
+				this.x[dec.rd] = mem.read(this.x[dec.rs1] + dec.imm) & 0xFF;  // TODO sign extend, test
 				break;
 			case 0x1:  // lh (load half-word)
-				this.x[rd] = mem.read(this.x[rs1] + imm) & 0xFFFF;  // TODO sign extend, test
+				this.x[dec.rd] = mem.read(this.x[dec.rs1] + dec.imm) & 0xFFFF;  // TODO sign extend, test
 				break;
 			case 0x2:  // lw (load word)
-				this.x[rd] = mem.read(this.x[rs1] + imm);  // TODO test
+				this.x[dec.rd] = mem.read(this.x[dec.rs1] + dec.imm);  // TODO test
 				break;
 			case 0x4:  // lbu (load byte unsigned)
-				this.x[rd] = mem.read(this.x[rs1] + imm) & 0xFF;  // TODO test
+				this.x[dec.rd] = mem.read(this.x[dec.rs1] + dec.imm) & 0xFF;  // TODO test
 				break;
 			case 0x5:  // lh (load half-word unsigned)
-				this.x[rd] = mem.read(this.x[rs1] + imm) & 0xFFFF;  // TODO test
+				this.x[dec.rd] = mem.read(this.x[dec.rs1] + dec.imm) & 0xFFFF;  // TODO test
 				break;
 			default:
-				console.log("unimplemented op (funct3="+funct3+"): "+opcode);
-				this.halt();
+				this.decodeError(dec);
 				break;
 			}
 			break;
@@ -311,8 +377,7 @@ let cpu = {
 			this.brk();
 			break;
 		default:
-			console.log("unimplemented op (funct3="+funct3+"): "+opcode);
-			this.halt();
+			this.decodeError(dec);
 			break;
 		}
 
