@@ -129,8 +129,6 @@ let cpu = {
 
 		this.breakSet = false;
 		this.haltSet = false;
-
-		ui.update();
 	},
 
 	run: function run() {
@@ -143,16 +141,12 @@ let cpu = {
 		this.intervalStop();
 
 		this.breakSet = true;
-
-		ui.update();
 	},
 
 	halt: function halt() {
 		this.intervalStop();
 
 		this.haltSet = true;
-
-		ui.update();
 	},
 
 	step: function step() {
@@ -286,8 +280,6 @@ let cpu = {
 
 		// TODO handle writes to x0 properly
 		this.x[0] = 0;
-
-		ui.update();
 	},
 };
 
@@ -550,10 +542,22 @@ let ui = {
 			cpu.run();
 		},
 
+		brk: function brk() {
+			cpu.brk();
+
+			this.update();
+		},
+
 		reset: function reset() {
 			cpu.reset();
 
-			ui.debug.update();
+			this.update();
+		},
+
+		stepInto: function stepInto() {
+			cpu.step();
+
+			this.update();
 		},
 	},
 
@@ -764,7 +768,7 @@ body {
 					<tr><td> <button onclick="ui.debug.brk()" class="debug_button" title="Stop running the code (F8)">Break</button> </td></tr>
 					<tr><td> <button onclick="ui.debug.reset()" class="debug_button" title="Reset the system (F9)">Reset</button> </td></tr>
 					<tr><td> <button class="debug_button" title="Step to next instruction, but not into subroutines (F10)">Step over</button> </td></tr>
-					<tr><td> <button onclick="cpu.step()" class="debug_button" title="Step to next instruction (F11)">Step into</button> </td></tr>
+					<tr><td> <button onclick="ui.debug.stepInto()" class="debug_button" title="Step to next instruction (F11)">Step into</button> </td></tr>
 				</table></td>
 				<th>pc</th> <td id="debug_pc" />
 				<th></th> <td id="debug_state" />
