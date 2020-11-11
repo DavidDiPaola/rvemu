@@ -175,7 +175,7 @@ let cpu = {
 		let rs2 = 0;
 		let imm = 0;
 		switch (opcode) {
-		case 0b0110011:
+		case 0b0110011:  // arithmetic instructions
 			rd     = (instr >>  7) & 0b01111;
 			rs1    = (instr >> 15) & 0b01111;
 			rs2    = (instr >> 20) & 0b01111;
@@ -233,7 +233,7 @@ let cpu = {
 				break;
 			}
 			break;
-		case 0b0010011:
+		case 0b0010011:  // arithmetic immediate instructions
 			rd  = (instr >>  7) & 0b01111;
 			rs1 = (instr >> 15) & 0b01111;
 			imm = (instr >> 20);
@@ -241,7 +241,6 @@ let cpu = {
 			case 0x0:  // addi (add immediate)
 				this.x[rd] = this.x[rs1] + imm;
 				break;
-			}
 			case 0x4:  // xori (xor immediate) todo test
 				this.x[rd] = this.x[rs1] ^ imm;
 				break;
@@ -255,7 +254,7 @@ let cpu = {
 				this.x[rd] = this.x[rs1] << (imm & 0b11111);
 				break;
 			case 0x5:
-				switch (imm & (0b1111111 << 5)) {
+				switch (imm >> 5) {
 				case 0x00:  // srli (shift right logical immediate) todo test
 					this.x[rd] = this.x[rs1] >> (imm & 0b11111);
 					break;
@@ -263,7 +262,7 @@ let cpu = {
 					this.x[rd] = this.x[rs1] >> (imm & 0b11111);
 					break;
 				default:
-					console.log("unimplemented op (funct3="+funct3+" funct7="+funct7+"): "+opcode);
+					console.log("unimplemented op (funct3="+funct3+" imm[11:5]="+(imm >> 5)+"): "+opcode);
 					this.halt();
 					break;
 				}
@@ -274,8 +273,39 @@ let cpu = {
 			case 0x3: // sltiu (set less than immediate unsigned) todo do msb, test
 				this.x[rd] = this.x[rs1] < imm ? 1 : 0;
 				break;
+			default:
+				console.log("unimplemented op (funct3="+funct3+"): "+opcode);
+				this.halt();
+				break;
+			}
 			break;
-		case 0b1110011:
+		case 0b0000011:  // load instructions
+			rd  = (instr >>  7) & 0b01111;
+			rs1 = (instr >> 15) & 0b01111;
+			imm = (instr >> 20);
+			switch (funct3) {
+			case 0x0:  // lb (load byte)
+				this.x[rd] = mem.read(this.x[rs1] + imm) & 0xFF;  // TODO sign extend, test
+				break;
+			case 0x1:  // lh (load half-word)
+				this.x[rd] = mem.read(this.x[rs1] + imm) & 0xFFFF;  // TODO sign extend, test
+				break;
+			case 0x2:  // lw (load word)
+				this.x[rd] = mem.read(this.x[rs1] + imm);  // TODO test
+				break;
+			case 0x4:  // lbu (load byte unsigned)
+				this.x[rd] = mem.read(this.x[rs1] + imm) & 0xFF;  // TODO test
+				break;
+			case 0x5:  // lh (load half-word unsigned)
+				this.x[rd] = mem.read(this.x[rs1] + imm) & 0xFFFF;  // TODO test
+				break;
+			default:
+				console.log("unimplemented op (funct3="+funct3+"): "+opcode);
+				this.halt();
+				break;
+			}
+			break;
+		case 0b1110011:  // debugging instructions
 			// todo ecall vs ebreak
 			console.log("break!");
 			this.brk();
