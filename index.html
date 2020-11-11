@@ -643,11 +643,11 @@ let ui = {
 			this.blockNumTextInputElement.value = blockNum.toString();
 		},
 
-		prevBlock: function prevBlock() {
+		blockPrev: function blockPrev() {
 			this.update(this.getBlockNum() - 1);
 		},
 
-		nextBlock: function nextBlock() {
+		blockNext: function blockNext() {
 			this.update(this.getBlockNum() + 1);
 		},
 
@@ -776,8 +776,8 @@ body {
 			<tr><td> <textarea id="mem_displayTextArea" cols=45 rows=16 readonly></textarea> </td></tr>
 			<tr><td>
 				<input type="text" id="mem_blockNumTextInput" class="monospace" spellcheck="false" title="The current block of memory being displayed" />
-				<button onclick="ui.mem.prevBlock()" class="mem_button" title="Previous block (F1)">-</button>
-				<button onclick="ui.mem.nextBlock()" class="mem_button" title="Next block (F2)">+</button>
+				<button onclick="ui.mem.blockPrev()" class="mem_button" title="Previous block (F1)">-</button>
+				<button onclick="ui.mem.blockNext()" class="mem_button" title="Next block (F2)">+</button>
 				<button onclick="ui.mem.load()" title="Load binary file into memory (F4)">Load</button> <input type="file" id="mem_fileInput" style="display: none;" />
 			</td></tr>
 		</table>
