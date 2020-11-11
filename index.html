@@ -80,6 +80,14 @@ let mem = {
 
 	},
 
+	read: function read(address) {
+		return this.ram[address / 4];
+	},
+
+	write: function write(address, data) {
+		this.ram[address / 4] = data;
+	},
+
 	// TODO button to reset memory back to state after assemble/load
 };
 
@@ -154,7 +162,7 @@ let cpu = {
 			return;
 		}
 
-		const instr = mem.ram[this.pc/4];
+		const instr = mem.read(this.pc);
 		this.pc += 4;
 
 		// TODO error messages for invalid instructions
@@ -724,7 +732,7 @@ body {
 	width: 8em;
 }
 
-.mem_button {
+.mem_button {  /* TODO more descriptive name? */
 	width: 2em;
 }
 
