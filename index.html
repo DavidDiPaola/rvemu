@@ -108,6 +108,11 @@ let cpu = {
 		ui.update();
 	},
 
+	/* TODO bug:
+		1. run until halt
+		2. try running again
+		3. try reset: resets to break state
+	*/
 	run: function run() {
 		this.breakSet = false;
 
@@ -152,6 +157,8 @@ let cpu = {
 		const instr = mem.ram[this.pc/4];
 		this.pc += 4;
 
+		// TODO error messages for invalid instructions
+		// TODO handle registers >15
 		const opcode = instr & 0b1111111;
 		const funct3 = (instr >> 12) & 0b111;
 		let funct7 = 0;
@@ -168,17 +175,53 @@ let cpu = {
 			switch (funct3) {
 			case 0x0:
 				switch (funct7) {
-				case 0x00:  // add (add)
-					this.x[rd] = this.x[rs1] + rs2;
+				case 0x00:  // add
+					this.x[rd] = this.x[rs1] + this.x[rs2];
 					break;
-				case 0x20:  // sub (sub)
-					this.x[rd] = this.x[rs1] + rs2;
+				case 0x20:  // sub
+					this.x[rd] = this.x[rs1] + this.x[rs2];
 					break;
 				default:
 					console.log("unimplemented op (funct3="+funct3+" funct7="+funct7+"): "+opcode);
 					this.halt();
 					break;
 				}
+				break;
+			case 0x4:  // xor TODO test
+				this.x[rd] = this.x[rs1] ^ this.x[rs2];
+				break;
+			case 0x6:  // or TODO test
+				this.x[rd] = this.x[rs1] | this.x[rs2];
+				break;
+			case 0x7:  // or TODO test
+				this.x[rd] = this.x[rs1] & this.x[rs2];
+				break;
+			case 0x1:  // sll (shift left logical) TODO test
+				this.x[rd] = this.x[rs1] << this.x[rs2];
+				break;
+			case 0x5:
+				switch (funct7) {
+				case 0x00:  // srl (shift right logical) TODO test
+					this.x[rd] = this.x[rs1] >> this.x[rs2];
+					break;
+				case 0x20:  // srl (shift right arithmetic) TODO msb, test
+					this.x[rd] = this.x[rs1] >> this.x[rs2];
+					break;
+				default:
+					console.log("unimplemented op (funct3="+funct3+" funct7="+funct7+"): "+opcode);
+					this.halt();
+					break;
+				}
+				break;
+			case 0x2:  // slt (set less than) TODO test
+				this.x[rd] = this.x[rs1] < this.x[rs2] ? 1 : 0;
+				break;
+			case 0x3:  // stlu (set less than unsigned) TODO test
+				this.x[rd] = this.x[rs1] < this.x[rs2] ? 1 : 0;
+				break;
+			default:
+				console.log("unimplemented op (funct3="+funct3+" funct7="+funct7+"): "+opcode);
+				this.halt();
 				break;
 			}
 			break;
@@ -200,16 +243,20 @@ let cpu = {
 			case 0x7:  // andi (and immediate) todo test
 				this.x[rd] = this.x[rs1] & imm;
 				break;
-			case 0x1:  // slii (shift left logical immediate) todo test
+			case 0x1:  // slli (shift left logical immediate) todo test
 				this.x[rd] = this.x[rs1] << (imm & 0b11111);
 				break;
 			case 0x5:
 				switch (imm & (0b1111111 << 5)) {
+				case 0x00:  // srli (shift right logical immediate) todo test
+					this.x[rd] = this.x[rs1] >> (imm & 0b11111);
+					break;
 				case 0x20:  // srai (shift right arithmetic immediate) todo do msb, test
 					this.x[rd] = this.x[rs1] >> (imm & 0b11111);
 					break;
-				default:  // srli (shift right logical immediate) todo test
-					this.x[rd] = this.x[rs1] >> (imm & 0b11111);
+				default:
+					console.log("unimplemented op (funct3="+funct3+" funct7="+funct7+"): "+opcode);
+					this.halt();
 					break;
 				}
 				break;
@@ -230,6 +277,9 @@ let cpu = {
 			this.halt();
 			break;
 		}
+
+		// TODO handle writes to x0 properly
+		this.x[0] = 0;
 
 		ui.update();
 	},
