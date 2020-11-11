@@ -108,25 +108,22 @@ let cpu = {
 		ui.update();
 	},
 
-	/* TODO bug:
-		1. run until halt
-		2. try running again
-		3. try reset: resets to break state
-	*/
 	run: function run() {
 		this.breakSet = false;
 
-		let self = this;
-		function stepMultiple() {
-			for (let i=0; i<10; i++) {
-				self.step();
-				if (self.breakSet || self.haltSet) {
-					ui.update();
-					break;
+		if (!this.stepInterval) {
+			let self = this;
+			function stepMultiple() {
+				for (let i=0; i<10; i++) {
+					self.step();
+					if (self.breakSet || self.haltSet) {
+						ui.update();
+						break;
+					}
 				}
 			}
+			this.stepInterval = setInterval(stepMultiple, 1);
 		}
-		this.stepInterval = setInterval(stepMultiple, 1);
 	},
 
 	brk: function brk() {
