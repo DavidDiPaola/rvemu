@@ -3,7 +3,630 @@
 <head>
 <meta charset="UTF-8" >
 <!-- 2020 David DiPaola. Licensed under CC0 (https://creativecommons.org/share-your-work/public-domain/cc0/). -->
-<title>RV ASM</title>
+<script>
+/* @license magnet:?xt=urn:btih:90dc5c0be029de84e523b9b3922520e79e0e6f08&dn=cc0.txt CC0 */
+
+let util = {
+	hex32: function hex32(val) {
+		/* TODO might need optimization */
+		return ("00000000" + val.toString(16)).substr(-8).toUpperCase();
+	},
+
+	getElem: function getElem(id) {
+		let elem = null;
+		if ((typeof id) === "string") {
+			elem = document.getElementById(id);
+		}
+		else if (id instanceof HTMLElement) {
+			elem = id;
+		}
+		else {
+			throw new Error("can't use ID " + id + " to find an element");
+		}
+
+		if (!elem) {
+			throw new Error("can't find element with ID " + id);
+		}
+
+		return elem;
+	},
+
+	getEventable: function getEventable(id) {
+		let elem = null
+		if ((typeof id) === "string") {
+			elem = util.getElem(id);
+		}
+		else if ((typeof id.addEventListener) === "function") {
+			elem = id;
+		}
+		else {
+			throw new Error("can't use ID " + id + " to find an element");
+		}
+
+		if (!elem) {
+			throw new Error("can't find element with ID " + id);
+		}
+
+		return elem;
+	},
+
+	setOnClick: function setOnClick(id, func) {
+		util.getEventable(id).addEventListener("click", func);
+	},
+
+	setOnChange: function setOnChange(id, func) {
+		util.getEventable(id).addEventListener("change", func);
+	},
+
+	setOnKeydown: function setOnKeydown(id, func) {
+		util.getEventable(id).addEventListener("keydown", func);
+	},
+};
+
+let mem = {
+	ram: null,
+	ram_size: 1 * 1024 * 1024,
+
+	init: function init() {
+		this.ram = new Uint32Array(this.ram_size / 4);
+	},
+
+	load: function load(buffer) {
+		/* TODO endianness */
+		const input = new Uint32Array(buffer);
+		for (let i=0; i<input.length; i++) {
+			this.ram[i] = input[i];
+		}
+
+	},
+
+	// TODO button to reset memory back to state after assemble/load
+};
+
+let cpu = {
+	pc: 0,
+	x: null,
+	breakSet: false,
+	haltSet: false,
+	stepInterval: null,
+
+	init: function init() {
+		this.x = new Uint32Array(16);
+
+		this.reset();
+	},
+
+	reset: function reset() {
+		this.pc = 0;
+		for (let i=0; i<this.x.length; i++) {
+			this.x[i] = 0;
+		}
+
+		this.breakSet = false;
+		this.haltSet = false;
+
+		ui.update();
+	},
+
+	run: function run() {
+		this.breakSet = false;
+
+		let self = this;
+		function stepMultiple() {
+			for (let i=0; i<10; i++) {
+				self.step();
+				if (self.breakSet || self.haltSet) {
+					ui.update();
+					break;
+				}
+			}
+		}
+		this.stepInterval = setInterval(stepMultiple, 1);
+	},
+
+	brk: function brk() {
+		this.breakSet = true;
+
+		if (this.stepInterval) {
+			clearInterval(this.stepInterval);
+		}
+
+		ui.update();
+	},
+
+	halt: function halt() {
+		this.haltSet = true;
+
+		if (this.stepInterval) {
+			clearInterval(this.stepInterval);
+		}
+
+		ui.update();
+	},
+
+	step: function step() {
+		if (this.haltSet) {
+			return;
+		}
+
+		const instr = mem.ram[this.pc/4];
+		this.pc += 4;
+
+		const opcode = instr & 0b1111111;
+		const funct3 = (instr >> 12) & 0b111;
+		let funct7 = 0;
+		let rd = 0;
+		let rs1 = 0;
+		let rs2 = 0;
+		let imm = 0;
+		switch (opcode) {
+		case 0b0110011:
+			rd     = (instr >>  7) & 0b01111;
+			rs1    = (instr >> 15) & 0b01111;
+			rs2    = (instr >> 20) & 0b01111;
+			funct7 = (instr >> 25);
+			switch (funct3) {
+			case 0x0:
+				switch (funct7) {
+				case 0x00:  // add (add)
+					this.x[rd] = this.x[rs1] + rs2;
+					break;
+				case 0x20:  // sub (sub)
+					this.x[rd] = this.x[rs1] + rs2;
+					break;
+				default:
+					console.log("unimplemented op (funct3="+funct3+" funct7="+funct7+"): "+opcode);
+					this.halt();
+					break;
+				}
+				break;
+			}
+			break;
+		case 0b0010011:
+			rd  = (instr >>  7) & 0b01111;
+			rs1 = (instr >> 15) & 0b01111;
+			imm = (instr >> 20);
+			switch (funct3) {
+			case 0x0:  // addi (add immediate)
+				this.x[rd] = this.x[rs1] + imm;
+				break;
+			}
+			case 0x4:  // xori (xor immediate) todo test
+				this.x[rd] = this.x[rs1] ^ imm;
+				break;
+			case 0x6:  // ori (or immediate) todo test
+				this.x[rd] = this.x[rs1] | imm;
+				break;
+			case 0x7:  // andi (and immediate) todo test
+				this.x[rd] = this.x[rs1] & imm;
+				break;
+			case 0x1:  // slii (shift left logical immediate) todo test
+				this.x[rd] = this.x[rs1] << (imm & 0b11111);
+				break;
+			case 0x5:
+				switch (imm & (0b1111111 << 5)) {
+				case 0x20:  // srai (shift right arithmetic immediate) todo do msb, test
+					this.x[rd] = this.x[rs1] >> (imm & 0b11111);
+					break;
+				default:  // srli (shift right logical immediate) todo test
+					this.x[rd] = this.x[rs1] >> (imm & 0b11111);
+					break;
+				}
+				break;
+			case 0x2: // slti (set less than immediate) todo do msb, test
+				this.x[rd] = this.x[rs1] < imm ? 1 : 0;
+				break;
+			case 0x3: // sltiu (set less than immediate unsigned) todo do msb, test
+				this.x[rd] = this.x[rs1] < imm ? 1 : 0;
+				break;
+			break;
+		case 0b1110011:
+			// todo ecall vs ebreak
+			console.log("break!");
+			this.brk();
+			break;
+		default:
+			console.log("unimplemented op (funct3="+funct3+"): "+opcode);
+			this.halt();
+			break;
+		}
+
+		ui.update();
+	},
+};
+
+let screen = {
+	canvas: null,
+	context: null,
+	width: 0,
+	height: 0,
+
+	init: function init() {
+		this.canvas = util.getElem("screen_canvas");
+
+		this.context = this.canvas.getContext("2d");
+		this.width = this.canvas.width;
+		this.height = this.canvas.height;
+
+		this.context.clearRect(0, 0, this.width, this.height);
+	},
+
+	/* TODO use mem.ram */
+
+	newBuffer: function newBuffer() {
+		return new Uint32Array(this.width * this.height);
+	},
+
+	set: function set(buffer) {
+		let imgd = this.context.createImageData(this.width, this.height);
+		for (let i=0; i<imgd.data.length; i+=4) {
+			let pixel = buffer[i/4];
+			imgd.data[i+0] = (pixel>>16) & 0xFF;
+			imgd.data[i+1] = (pixel>> 8) & 0xFF;
+			imgd.data[i+2] = (pixel>> 0) & 0xFF;
+			imgd.data[i+3] = 0xFF;
+		}
+		this.context.putImageData(imgd, 0, 0);
+	},
+};
+
+let serial = {
+	output: {
+		putCode: function putCode(code) {
+			ui.serial.output.putChar(String.fromCharCode(code));
+		},
+	},
+
+	input: {
+		fifoBuffer: [],
+
+		reset: function reset() {
+			this.fifoBuffer = [];
+		},
+
+		putStr: function putStr(str) {
+			for (let ch of str) {
+				this.fifoBuffer.push(ch.charCodeAt(0));
+			}
+		},
+
+		getCode: function getCode() {
+			let code = 0;
+
+			if (this.fifoBuffer.length > 0) {
+				code = this.fifoBuffer.shift();
+			}
+
+			return code;
+		},
+
+		getFifoStr: function getFifoStr() {
+			let str = "";
+
+			for (let code of this.fifoBuffer) {
+				str += String.fromCharCode(code);
+			}
+
+			return str;
+		},
+	},
+
+	reset: function reset() {
+		this.input.reset();
+	},
+};
+
+let code = {
+	// TODO assembler
+};
+
+let ui = {
+	ready: false,
+
+	init: function init() {
+		this.serial.init();
+		this.code.init();
+		this.debug.init();
+		this.mem.init();
+
+		let self = this;
+		util.setOnKeydown(window, function onWindowKeydown(kde) {
+			switch (kde.key) {
+			case "F1":  // mem previous block
+				kde.preventDefault();
+				self.mem.blockPrev();
+				break;
+			case "F2":  // mem next block
+				kde.preventDefault();
+				self.mem.blockNext();
+				break;
+			case "F4":  // load
+				kde.preventDefault();
+				ui.mem.load();
+				break;
+			case "F5":  // run
+				kde.preventDefault();
+				self.debug.run();
+				break;
+			case "F8":  // break
+				kde.preventDefault();
+				self.debug.brk();
+				break;
+			case "F9":  // reset
+				kde.preventDefault();
+				self.debug.reset();
+				break;
+			case "F10":  // step over
+				kde.preventDefault();
+				console.log("TODO step over key handler");
+				break;
+			case "F11":  // step into
+				kde.preventDefault();
+				self.debug.step();
+				break;
+			}
+		});
+
+		this.ready = true;
+	},
+
+	update: function update() {
+		if (this.ready) {
+			this.serial.update();
+			this.debug.update();
+			this.mem.update();
+		}
+	},
+
+	serial: {
+		output: {
+			outputTextArea: null,
+
+			init: function init() {
+				this.outputTextArea = util.getElem("serial_outputTextArea");
+
+				this.clear();
+			},
+
+			clear: function clear() {
+				this.outputTextArea.value = "";
+			},
+
+			putChar: function putChar(ch) {
+				this.outputTextArea.value += ch;
+			},
+		},
+
+		input: {
+			inputTextElement: null,
+			fifoTextAreaElement: null,
+
+			init: function init() {
+				this.inputTextElement = util.getElem("serial_inputText");
+				this.fifoTextAreaElement = util.getElem("serial_fifoTextArea");
+
+				let self = this;
+				function doSend() {
+					serial.input.putStr(self.inputTextElement.value);
+
+					self.inputTextElement.value = "";
+
+					self.update();
+				};
+				util.setOnKeydown("serial_inputText", function serial_inputText_keydown(kde) {
+					if (kde.key === "Enter") {
+						kde.preventDefault();
+						doSend();
+					}
+				});
+				util.setOnClick("serial_sendButton", doSend);
+
+				this.update();
+			},
+
+			update: function update() {
+				this.fifoTextAreaElement.value = serial.input.getFifoStr();
+			},
+		},
+
+		init: function init() {
+			this.output.init();
+			this.input.init();
+		},
+
+		update: function update() {
+			this.input.update();
+		},
+	},
+
+	code: {
+		editorElement: null,
+
+		init: function init() {
+			this.editorElement = util.getElem("code_editor");
+		},
+	},
+
+	debug: {
+		pcElement: null,
+		stateElement: null,
+		regElements: [],
+		fileElement: null,
+
+		init: function init() {
+			this.pcElement = util.getElem("debug_pc");
+			this.stateElement = util.getElem("debug_state");
+
+			for (let i=0; i<16; i++) {
+				let name = "debug_x" + i;
+				let elem = util.getElem(name);
+				this.regElements.push(elem);
+			}
+
+			this.update();
+		},
+
+		update: function update() {
+			this.pcElement.innerText = util.hex32(cpu.pc);
+
+			if (cpu.haltSet) {
+				this.stateElement.innerText = "halt";
+				this.stateElement.classList.remove("warning");
+				this.stateElement.classList.add("error");
+			}
+			else if (cpu.breakSet) {
+				this.stateElement.innerText = "break";
+				this.stateElement.classList.remove("error");
+				this.stateElement.classList.add("warning");
+			}
+			else {
+				this.stateElement.innerText = "";
+				this.stateElement.classList.remove("warning");
+				this.stateElement.classList.remove("error");
+			}
+			
+			for (let i=0; i<16; i++) {
+				this.regElements[i].innerText = util.hex32(cpu.x[i]);
+			}
+		},
+
+		run: function run() {
+			cpu.run();
+		},
+
+		reset: function reset() {
+			cpu.reset();
+
+			ui.debug.update();
+		},
+	},
+
+	mem: {
+		displayTextAreaElement: null,
+		blockNumTextInputElement: null,
+		fileInputElement: null,
+
+		block_size: 0x100,
+		block_count: mem.ram_size / this.block_size,
+
+		getBlockNum: function getBlockNum() {
+			let num = parseInt(this.blockNumTextInputElement.value);
+			if (isNaN(num)) {
+				num = 0;
+			}
+
+			return num;
+		},
+
+		init: function init() {
+			this.displayTextAreaElement = util.getElem("mem_displayTextArea");
+			this.blockNumTextInputElement = util.getElem("mem_blockNumTextInput");
+			this.fileInputElement = util.getElem("mem_fileInput");
+
+			this.update();
+
+			let self = this;
+			util.setOnChange(this.blockNumTextInputElement, function mem_blockNumTextInput_onchange() {
+				self.update(self.getBlockNum());
+			});
+			util.setOnChange(this.fileInputElement, function fileInput_onchange(ce) {
+				const files = ce.target.files;
+				if ( !files ) {
+					console.log("ERROR: files was null");  // TODO UI error
+					return;
+				}
+				if ( files.length < 1 ) {
+					console.log("ERROR: files.length was " + files.length);  // TODO UI error
+					return;
+				}
+
+				const file = files[0];
+				if (file.size > mem.ram_size) {
+					console.log("ERROR: file was too big");  // TODO UI error
+					return;
+				}
+
+				const reader = new FileReader();
+				reader.addEventListener("load", function load(le) {
+					const data = le.target.result;
+					mem.load(data);
+
+					// TODO update screen
+					self.update(0);
+				});
+				reader.readAsArrayBuffer(file);
+			});
+		},
+
+		// TODO can enter too large of a number in input box
+		update: function update(blockNum) {
+			if (blockNum === undefined) {
+				blockNum = this.getBlockNum();
+			}
+
+			if (blockNum < 0) {
+				blockNum = 0;
+			}
+			else if (blockNum >= this.block_count) {
+				blockNum = block_count - 1;
+			}
+
+			this.displayTextAreaElement.value = "";
+
+			const start = blockNum * (this.block_size / 4);
+			const end = start + (this.block_size / 4);
+			const r = mem.ram;
+			for (let i=start; i<end; i+=4) {
+				if (i != start) {
+					this.displayTextAreaElement.value += "\n";
+				}
+
+				this.displayTextAreaElement.value += util.hex32(i*4)
+					+ ": "
+					+ util.hex32(r[i+0])
+					+ " "
+					+ util.hex32(r[i+1])
+					+ " "
+					+ util.hex32(r[i+2])
+					+ " "
+					+ util.hex32(r[i+3])
+				;
+			}
+
+			this.blockNumTextInputElement.value = blockNum.toString();
+		},
+
+		prevBlock: function prevBlock() {
+			this.update(this.getBlockNum() - 1);
+		},
+
+		nextBlock: function nextBlock() {
+			this.update(this.getBlockNum() + 1);
+		},
+
+		load: function load() {
+			this.fileInputElement.click();
+		},
+	},
+};
+
+window.onload = function onload() {
+	mem.init();
+	cpu.init();
+	screen.init();
+	serial.reset();
+
+	ui.init();
+
+	ui.serial.output.putChar("?");
+
+	/*
+	let buffer = screen.newBuffer();
+	buffer[0] = 0xFF00FF;
+	screen.set(buffer);
+	*/
+}
+</script>
 <style>
 * {
 	background-color: black;
@@ -37,418 +660,78 @@ body {
 	image-rendering: -moz-crisp-edges /* Firefox */
 }
 
-.rvdebug_button {
+.debug_button {
 	width: 8em;
 }
 
-.rvmem_button {
+.mem_button {
 	width: 2em;
 }
-</style>
-<script>
-/* @license magnet:?xt=urn:btih:90dc5c0be029de84e523b9b3922520e79e0e6f08&dn=cc0.txt CC0 */
 
-let util = {
-	hex32: function hex32(val) {
-		return ("00000000" + val.toString(16)).substr(-8).toUpperCase();
-	},
-};
-
-let rvemu = {
-	pc: 0,
-	x: null,
-	mem: null,
-	mem_size: 1 * 1024 * 1024,
-
-	init: function init() {
-		this.x = new Uint32Array(16);
-
-		this.mem = new Uint32Array(this.mem_size / 4);
-	},
-
-	load: function load(buffer) {
-		/* TODO endianness */
-		const input = new Uint32Array(buffer);
-		for (let i=0; i<input.length; i++) {
-			this.mem[i] = input[i];
-		}
-
-		rvmem.update();
-	},
-};
-
-let rvscreen = {
-	canvas: null,
-	context: null,
-	width: 0,
-	height: 0,
-
-	init: function init() {
-		this.canvas = document.getElementById("rvcanvas");
-		if (!this.canvas) {
-			console.log("ERROR: can't find canvas element");
-			return;
-		}
-
-		this.context = this.canvas.getContext("2d");
-		this.width = this.canvas.width;
-		this.height = this.canvas.height;
-
-		this.context.clearRect(0, 0, this.width, this.height);
-	},
-
-	/* TODO use rvemu.mem */
-
-	newBuffer: function newBuffer() {
-		return new Uint32Array(this.width * this.height);
-	},
-
-	set: function set(buffer) {
-		let imgd = this.context.createImageData(this.width, this.height);
-		for (let i=0; i<imgd.data.length; i+=4) {
-			let pixel = buffer[i/4];
-			imgd.data[i+0] = (pixel>>16) & 0xFF;
-			imgd.data[i+1] = (pixel>> 8) & 0xFF;
-			imgd.data[i+2] = (pixel>> 0) & 0xFF;
-			imgd.data[i+3] = 0xFF;
-		}
-		this.context.putImageData(imgd, 0, 0);
-	},
-};
-
-let rvserial = {
-	output: {
-		element: null,
-
-		init: function init() {
-			this.element = document.getElementById("rvserial_output");
-			if (!this.element) {
-				console.log("ERROR: can't find rvserial textarea output element");
-				return;
-			}
-
-			this.clear();
-		},
-
-		clear: function clear() {
-			this.element.value = "";
-		},
-
-		put: function put(ch) {
-			this.element.value += String.fromCharCode(ch);
-		},
-	},
-
-	input: {
-		inputElement: null,
-		fifoElement: null,
-		buffer: [],
-		empty: true,
-
-		init: function init() {
-			this.inputElement = document.getElementById("rvserial_input");
-			if (!this.inputElement) {
-				console.log("ERROR: can't find rvserial input element");
-				return;
-			}
-
-			this.fifoElement = document.getElementById("rvserial_fifo");
-			if (!this.fifoElement) {
-				console.log("ERROR: can't find rvserial FIFO element");
-				return;
-			}
-			this.fifoElement.value = "";
-		},
-
-		put: function put(ch) {
-			this.buffer.push(ch);
-
-			this.empty = false;
-
-			this.showFifo();
-		},
-
-		get: function get() {
-			let ch = 0;
-
-			if (this.buffer.length != 0) {
-				let str = this.buffer.shift();
-				ch = str.charCodeAt(0);
-
-				if (this.buffer.length == 0) {
-					this.empty = true;
-				}
-			}
-
-			this.showFifo();
-
-			return ch;
-		},
-
-		onsend: function onsend() {
-			let str = this.inputElement.value;
-			for (let i=0; i<str.length; i++) {
-				this.put(str[i]);
-			}
-
-			this.inputElement.value = "";
-		},
-
-		showFifo: function showFifo() {
-			let str = "";
-			for (let i=0; i<this.buffer.length; i++) {
-				str += this.buffer[i];
-			}
-
-			this.fifoElement.value = str;
-		},
-	},
-
-	init: function init() {
-		this.output.init();
-		this.input.init();
-	},
-	
-	put: function put(ch) {
-		this.output.put(ch);
-	},
-
-	get: function get() {
-		return this.input.get();
-	},
-
-	onsend: function onsend() {
-		this.input.onsend();
-	},
-};
-
-let rvcode = {
-	element: null,
-
-	init: function init() {
-		this.element = document.getElementById("rvcode");
-		if (!this.element) {
-			console.log("ERROR: can't find rvcode textarea element");
-			return;
-		}
-	},
-
-	get: function get() {
-		return this.element.value;
-	},
-};
-
-let rvdebug = {
-	pcElement: null,
-	regElements: [],
-	fileElement: null,
-
-	init: function init() {
-		this.pcElement = document.getElementById("rvdebug_pc");
-		if (!this.pcElement) {
-			console.log("ERROR: can't find rvdebug_pc element");
-			return;
-		}
-
-		for (let i=0; i<16; i++) {
-			let name = "rvdebug_x" + i;
-			let elem = document.getElementById(name);
-			if (!elem) {
-				console.log("ERROR: can't find "+name+" element");
-				return;
-			}
-
-			this.regElements.push(elem);
-		}
-
-		this.fileElement = document.getElementById("rvdebug_file");
-		if (!this.fileElement) {
-			console.log("ERROR: can't find rvdebug_file element");
-			return;
-		}
-		this.fileElement.addEventListener("change", this.onFileElementChange);
-
-		this.update();
-	},
-
-	update: function update() {
-		this.pcElement.innerText = util.hex32(rvemu.pc);
-		
-		for (let i=0; i<16; i++) {
-			this.regElements[i].innerText = util.hex32(rvemu.x[i]);
-		}
-	},
-
-	onFileElementChange: function onFileElementChange(ce) {
-		const files = event.target.files;
-		if ( !files ) {
-			console.log("ERROR: files was null");
-			return;
-		}
-		if ( files.length < 1 ) {
-			console.log("ERROR: files.length was " + files.length);
-			return;
-		}
-
-		const file = files[0];
-		if (file.size > rvemu.mem_size) {
-			console.log("ERROR: file was too big");
-			return;
-		}
-		const reader = new FileReader();
-		reader.addEventListener("load", function load(le) {
-			const data = le.target.result;
-			rvemu.load(data);
-		});
-		reader.readAsArrayBuffer(file);
-	},
-};
-
-let rvmem = {
-	displayElement: null,
-	blockElement: null,
-	block_size: 0x100,
-	block_count: rvemu.mem_size / this.block_size,
-
-	init: function init() {
-		this.displayElement = document.getElementById("rvmem_display");
-		if (!this.displayElement) {
-			console.log("ERROR: can't find rvmem element");
-			return;
-		}
-
-		this.blockElement = document.getElementById("rvmem_block");
-		if (!this.blockElement) {
-			console.log("ERROR: can't find rvmem block element");
-			return;
-		}
-		this.blockElement.value = "0";
-		
-		this.update(0);
-	},
-
-	update: function update(block) {
-		if (block === undefined) {
-			block = parseInt(this.blockElement.value);
-		}
-		else if (block < 0) {
-			block = 0;
-		}
-		else if (block >= this.block_count) {
-			block = block_count - 1;
-		}
-
-		this.displayElement.value = "";
-
-		const start = block * (this.block_size / 4);
-		const end = start + (this.block_size / 4);
-		const m = rvemu.mem;
-		for (let i=start; i<end; i+=4) {
-			if (i != start) {
-				this.displayElement.value += "\n";
-			}
-
-			this.displayElement.value += util.hex32(i*4)
-				+ ": "
-				+ util.hex32(m[i+0])
-				+ " "
-				+ util.hex32(m[i+1])
-				+ " "
-				+ util.hex32(m[i+2])
-				+ " "
-				+ util.hex32(m[i+3])
-			;
-		}
-
-		this.blockElement.value = block.toString();
-	},
-
-	block_onchange: function block_onchange() {
-		let block = parseInt(this.blockElement.value);
-		this.update(block);
-	},
-
-	down_onclick: function down_onlcick() {
-		let block = parseInt(this.blockElement.value);
-		this.update(block - 1);
-	},
-
-	up_onclick: function up_onlcick() {
-		let block = parseInt(this.blockElement.value);
-		this.update(block + 1);
-	},
-};
-
-
-window.onload = function onload() {
-	rvemu.init();
-	rvscreen.init();
-	rvserial.init();
-	rvdebug.init();
-	rvmem.init();
-
-	let buffer = rvscreen.newBuffer();
-	buffer[0] = 0xFF00FF;
-	rvscreen.set(buffer);
-
-	rvserial.put(0x45);
+.warning {
+	color: yellow;
+	font-weight: bold;
 }
-</script>
+
+.error {
+	color: red;
+	font-weight: bold;
+}
+</style>
+<title>RV ASM</title>
 </head>
 <body>
 	<div class="chunk">
-		<canvas id="rvcanvas" height="64" width="64"></canvas>
+		<canvas id="screen_canvas" height="64" width="64"></canvas>
 	</div>
 
 	<div class="chunk">
 		<table>
-			<tr><td colspan=2> <textarea id="rvserial_output" class="monospace" cols=40 rows=20 readonly title="Serial output"></textarea> </td></tr>
-			<tr><td colspan=2> <textarea id="rvserial_fifo" class="monospace" cols=40 rows=1 readonly title="Serial input FIFO state"></textarea> </td></tr>
-			<tr>
-				<td> <input type="text" id="rvserial_input" class="monospace" title="Type serial input here" /> </td>
-				<td> <button onclick="rvserial.onsend()" title="Click to send serial input">Send</button> </td>
-			</tr>
+			<tr><td> <textarea id="serial_outputTextArea" class="monospace" cols=40 rows=20 readonly title="Serial output"></textarea> </td></tr>
+			<tr><td> <textarea id="serial_fifoTextArea" class="monospace" cols=40 rows=1 readonly title="Serial input FIFO state"></textarea> </td></tr>
+			<tr><td>
+				<input type="text" id="serial_inputText" class="monospace" spellcheck="false" title="Type serial input here" />
+				<button id="serial_sendButton" title="Click to send serial input">Send</button>
+			</td></tr>
 		</table>
 	</div>
 
 	<div class="chunk">
-		<textarea id="rvcode" cols=40 rows=20 spellcheck="false" class="monospace"></textarea>
+		<textarea id="code_editor" cols=40 rows=20 spellcheck="false" class="monospace"></textarea>
 	</div>
 
 	<div class="chunk">
 		<table class="monospace">
 			<tr>
 				<td rowspan=9><table>
-					<tr><td> <button class="rvdebug_button" title="Run the code (F5)">Run</button> </td></tr>
-					<tr><td> <button class="rvdebug_button" title="Stop running the code (F8)">Break</button> </td></tr>
-					<tr><td> <button class="rvdebug_button" title="Reset the system (F9)">Reset</button> </td></tr>
-					<tr><td> <button class="rvdebug_button" title="Step to next instruction, but not into subroutines (F10)">Step over</button> </td></tr>
-					<tr><td> <button class="rvdebug_button" title="Step to next instruction (F11)">Step into</button> </td></tr>
-					<tr><td>
-						<input type="file" id="rvdebug_file" style="display: none;" />
-						<button class="rvdebug_button" onclick="document.getElementById('rvdebug_file').click();" title="Load binary file into memory">Load</button>
-					</td></tr>
+					<tr><td> <button onclick="ui.debug.run()" class="debug_button" title="Run the code (F5)">Run</button> </td></tr>
+					<tr><td> <button onclick="ui.debug.brk()" class="debug_button" title="Stop running the code (F8)">Break</button> </td></tr>
+					<tr><td> <button onclick="ui.debug.reset()" class="debug_button" title="Reset the system (F9)">Reset</button> </td></tr>
+					<tr><td> <button class="debug_button" title="Step to next instruction, but not into subroutines (F10)">Step over</button> </td></tr>
+					<tr><td> <button onclick="cpu.step()" class="debug_button" title="Step to next instruction (F11)">Step into</button> </td></tr>
 				</table></td>
-				<th>pc</th> <td id="rvdebug_pc" />
+				<th>pc</th> <td id="debug_pc" />
+				<th></th> <td id="debug_state" />
 			</tr>
-			<tr> <th>z</th>  <td id="rvdebug_x0" /> <th>x8</th>  <td id="rvdebug_x8"  /> </tr>
-			<tr> <th>ra</th> <td id="rvdebug_x1" /> <th>x9</th>  <td id="rvdebug_x9"  /> </tr>
-			<tr> <th>sp</th> <td id="rvdebug_x2" /> <th>x10</th> <td id="rvdebug_x10" /> </tr>
-			<tr> <th>x3</th> <td id="rvdebug_x3" /> <th>x11</th> <td id="rvdebug_x11" /> </tr>
-			<tr> <th>x4</th> <td id="rvdebug_x4" /> <th>x12</th> <td id="rvdebug_x12" /> </tr>
-			<tr> <th>x5</th> <td id="rvdebug_x5" /> <th>x13</th> <td id="rvdebug_x13" /> </tr>
-			<tr> <th>x6</th> <td id="rvdebug_x6" /> <th>x14</th> <td id="rvdebug_x14" /> </tr>
-			<tr> <th>x7</th> <td id="rvdebug_x7" /> <th>x15</th> <td id="rvdebug_x15" /> </tr>
+			<tr> <th>z</th>  <td id="debug_x0" /> <th>x8</th>  <td id="debug_x8"  /> </tr>
+			<tr> <th>ra</th> <td id="debug_x1" /> <th>x9</th>  <td id="debug_x9"  /> </tr>
+			<tr> <th>sp</th> <td id="debug_x2" /> <th>x10</th> <td id="debug_x10" /> </tr>
+			<tr> <th>x3</th> <td id="debug_x3" /> <th>x11</th> <td id="debug_x11" /> </tr>
+			<tr> <th>x4</th> <td id="debug_x4" /> <th>x12</th> <td id="debug_x12" /> </tr>
+			<tr> <th>x5</th> <td id="debug_x5" /> <th>x13</th> <td id="debug_x13" /> </tr>
+			<tr> <th>x6</th> <td id="debug_x6" /> <th>x14</th> <td id="debug_x14" /> </tr>
+			<tr> <th>x7</th> <td id="debug_x7" /> <th>x15</th> <td id="debug_x15" /> </tr>
 		</table>
 	</div>
 
-	<div class="chunk" id="rvmem">
+	<div class="chunk" id="mem">
 		<table class="monospace">
-			<tr><td> <textarea id="rvmem_display" cols=45 rows=16 readonly></textarea> </td></tr>
+			<tr><td> <textarea id="mem_displayTextArea" cols=45 rows=16 readonly></textarea> </td></tr>
 			<tr><td>
-				<textarea id="rvmem_block" cols=10 rows=1 onchange="rvmem.block_onchange()" title="The current block of memory being displayed"></textarea>
-				<button onclick="rvmem.down_onclick()" class="rvmem_button" title="Previous block (F1)">-</button>
-				<button onclick="rvmem.up_onclick()" class="rvmem_button" title="Next block (F2)">+</button>
+				<input type="text" id="mem_blockNumTextInput" class="monospace" spellcheck="false" title="The current block of memory being displayed" />
+				<button onclick="ui.mem.prevBlock()" class="mem_button" title="Previous block (F1)">-</button>
+				<button onclick="ui.mem.nextBlock()" class="mem_button" title="Next block (F2)">+</button>
+				<button onclick="ui.mem.load()" title="Load binary file into memory (F4)">Load</button> <input type="file" id="mem_fileInput" style="display: none;" />
 			</td></tr>
 		</table>
 	</div>
