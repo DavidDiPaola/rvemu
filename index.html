@@ -96,21 +96,7 @@ let cpu = {
 		this.reset();
 	},
 
-	reset: function reset() {
-		this.pc = 0;
-		for (let i=0; i<this.x.length; i++) {
-			this.x[i] = 0;
-		}
-
-		this.breakSet = false;
-		this.haltSet = false;
-
-		ui.update();
-	},
-
-	run: function run() {
-		this.breakSet = false;
-
+	intervalStart: function intervalStart() {
 		if (!this.stepInterval) {
 			let self = this;
 			function stepMultiple() {
@@ -126,22 +112,45 @@ let cpu = {
 		}
 	},
 
-	brk: function brk() {
-		this.breakSet = true;
-
+	intervalStop: function intervalStop() {
 		if (this.stepInterval) {
 			clearInterval(this.stepInterval);
+			this.stepInterval = null;
 		}
+	},
+
+	reset: function reset() {
+		this.intervalStop();
+
+		this.pc = 0;
+		for (let i=0; i<this.x.length; i++) {
+			this.x[i] = 0;
+		}
+
+		this.breakSet = false;
+		this.haltSet = false;
+
+		ui.update();
+	},
+
+	run: function run() {
+		this.breakSet = false;
+
+		this.intervalStart();
+	},
+
+	brk: function brk() {
+		this.intervalStop();
+
+		this.breakSet = true;
 
 		ui.update();
 	},
 
 	halt: function halt() {
-		this.haltSet = true;
+		this.intervalStop();
 
-		if (this.stepInterval) {
-			clearInterval(this.stepInterval);
-		}
+		this.haltSet = true;
 
 		ui.update();
 	},
