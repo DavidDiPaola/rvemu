@@ -200,10 +200,13 @@ let cpu = {
 			};
 		},
 
-		// TODO b-type
 		b: function b(instr) {
 			return {
 				type: "b",
+				imm:    (((instr >> 31) & 0b1) << 12) | (((instr >> 7) & 0b1) << 11) | (((instr >> 25) & 0b111111) << 5) | (((instr >> 8) & 0b1111) << 1),
+				funct3: (instr >> 12) &   0b111,
+				rs1:    (instr >> 15) & 0b01111,
+				rs2:    (instr >> 20) & 0b01111,
 			};
 		},
 
@@ -215,10 +218,11 @@ let cpu = {
 			};
 		},
 
-		// TODO j-type
 		j: function j(instr) {
 			return {
 				type: "j",
+				rd:  (instr >>  7) & 0b01111,
+				imm: (((instr >> 31) & 0b1) << 20) | (((instr >> 12) & 0b11111111) << 12) | (((instr >> 20) & 0b1) << 11) | (((instr >> 21) & 0b1111111111) << 1),
 			};
 		},
 	},
