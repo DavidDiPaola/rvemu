@@ -72,12 +72,21 @@ let mem = {
 	},
 
 	load: function load(buffer) {
-		/* TODO endianness */
-		const input = new Uint32Array(buffer);
-		for (let i=0; i<input.length; i++) {
-			this.ram[i] = input[i];
+		/* TODO test on big endian system */
+		const input = new Uint8Array(buffer);
+		const input_length_rounded = input.length & ~0b11;
+		for (let i=0; i<input_length_rounded; i+=4) {
+			this.ram[i / 4] = (
+				(input[i+0] <<  0) |
+				(input[i+1] <<  8) |
+				(input[i+2] << 16) |
+				(input[i+3] << 24)
+			);
 		}
-
+		let diff = input.length - input_length_rounded;
+		if (diff > 0) {
+			console.log("WARNING: binary size is not aligned! Ignoring final "+diff+" bytes.");
+		}
 	},
 
 	read: function read(address) {
@@ -620,6 +629,7 @@ let ui = {
 		update: function update() {
 			this.pcElement.innerText = util.hex32(cpu.pc);
 
+			// TODO have "running" state
 			if (cpu.haltSet) {
 				this.stateElement.innerText = "halt";
 				this.stateElement.classList.remove("warning");
