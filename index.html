@@ -228,29 +228,43 @@ let cpu = {
 	},
 
 	decodeError: function decodeError(dec) {
-		let name = "";
-		switch (dec.type) {
-		case "r":
-			name = "R-type";
-			break;
-		case "i":
-			name = "I-type";
-			break;
-		case "s":
-			name = "S-type";
-			break;
-		case "b":
-			name = "B-type";
-			break;
-		case "u":
-			name = "U-type";
-			break;
-		case "j":
-			name = "J-type";
-			break;
+		if (typeof dec === "object") {
+			let name = "";
+			switch (dec.type) {
+			case "r":
+				name = "R-type";
+				break;
+			case "i":
+				name = "I-type";
+				break;
+			case "s":
+				name = "S-type";
+				break;
+			case "b":
+				name = "B-type";
+				break;
+			case "u":
+				name = "U-type";
+				break;
+			case "j":
+				name = "J-type";
+				break;
+			}
+			console.log("ERROR: unknown "+name+" instruction: " + JSON.stringify(dec));
 		}
-
-		console.log("ERROR: unknown "+name+" instruction: " + JSON.stringify(dec));
+		else if (typeof dec === "number") {
+			console.log("ERROR: unknown instruction" + "\n" +
+				"R-type? " + JSON.stringify(this.decode.r(dec)) + "\n" +
+				"I-type? " + JSON.stringify(this.decode.i(dec)) + "\n" +
+				"S-type? " + JSON.stringify(this.decode.s(dec)) + "\n" +
+				"B-type? " + JSON.stringify(this.decode.b(dec)) + "\n" +
+				"U-type? " + JSON.stringify(this.decode.u(dec)) + "\n" +
+				"J-type? " + JSON.stringify(this.decode.j(dec)) + "\n"
+			);
+		}
+		else {
+			console.log("ERROR: unknown instruction: " + JSON.stringify(dec));
+		}
 
 		this.halt();
 	},
