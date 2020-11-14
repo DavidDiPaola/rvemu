@@ -191,6 +191,7 @@ let cpu = {
 		},
 
 		s: function s(instr) {
+			/* TODO is imm signed? */
 			return {
 				type: "s",
 				imm:    (((instr >> 25) & 0b1111111) << 5) | ((instr >> 7) & 0b11111),
@@ -201,9 +202,15 @@ let cpu = {
 		},
 
 		b: function b(instr) {
+			let imm = (((instr >> 31) & 0b1) << 12) | (((instr >> 7) & 0b1) << 11) | (((instr >> 25) & 0b111111) << 5) | (((instr >> 8) & 0b1111) << 1);
+			let imm_msb = (1 << 12);
+			if (imm & imm_msb) {
+				imm -= (imm_msb * 2);
+			}
+
 			return {
 				type: "b",
-				imm:    (((instr >> 31) & 0b1) << 12) | (((instr >> 7) & 0b1) << 11) | (((instr >> 25) & 0b111111) << 5) | (((instr >> 8) & 0b1111) << 1),
+				imm:    imm,
 				funct3: (instr >> 12) &   0b111,
 				rs1:    (instr >> 15) & 0b01111,
 				rs2:    (instr >> 20) & 0b01111,
@@ -282,6 +289,7 @@ let cpu = {
 		// TODO error messages for invalid instructions
 		let dec = instr;
 		const opcode = instr & 0b1111111;
+		console.log("instr: 0x" + instr.toString(16) + " opcode: 0b" + opcode.toString(2));
 		switch (opcode) {
 		case 0b0110011:  // arithmetic instructions (R-type)
 			dec = this.decode.r(instr);
@@ -379,6 +387,7 @@ let cpu = {
 			break;
 		case 0b0000011:  // load instructions (I-type)
 			dec = this.decode.i(instr);
+			/* TODO is imm signed? */
 			switch (dec.funct3) {
 			case 0x0:  // lb (load byte)
 				this.x[dec.rd] = mem.read(this.x[dec.rs1] + dec.imm) & 0xFF;  // TODO sign extend, test
@@ -418,6 +427,36 @@ let cpu = {
 				this.decodeError(dec);
 				break;
 			}
+			break;
+		case 0b1100011:  // branch instructions (B-type)
+			dec = this.decode.b(instr);
+			switch (dec.funct3) {
+			case 0x0:  // beq (branch if equal)
+				// TODO test
+				if (this.x[dec.rs1] == this.x[dec.rs2]) {
+					this.pc += dec.imm;
+				}
+				break;
+			case 0x1:  // bne (branch if not equal)
+				// TODO test
+				if (this.x[dec.rs1] != this.x[dec.rs2]) {
+					this.pc += dec.imm;
+				}
+				break;
+			case 0x4:  // blt (branch if less than)
+				// TODO test
+				if (this.x[dec.rs1] < this.x[dec.rs2]) {
+					this.pc += dec.imm;
+				}
+				break;
+			case 0x5:  // bge (branch if greater than or equal)
+				// TODO test
+				if (this.x[dec.rs1] >= this.x[dec.rs2]) {
+					this.pc += dec.imm;
+				}
+				break;
+			}
+			break;
 		case 0b1110011:  // debugging instructions
 			// todo ecall vs ebreak
 			console.log("break!");
@@ -830,6 +869,8 @@ window.onload = function onload() {
 	ui.init();
 
 	ui.serial.output.putChar("?");
+
+	console.log(JSON.stringify(cpu.decode.b(0xfe51c6e3)));
 
 	/*
 	let buffer = screen.newBuffer();
