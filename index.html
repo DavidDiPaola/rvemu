@@ -266,6 +266,8 @@ let cpu = {
 			console.log("ERROR: unknown instruction: " + JSON.stringify(dec));
 		}
 
+		console.trace();
+
 		this.halt();
 	},
 
