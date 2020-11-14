@@ -253,7 +253,7 @@ let cpu = {
 			console.log("ERROR: unknown "+name+" instruction: " + JSON.stringify(dec));
 		}
 		else if (typeof dec === "number") {
-			console.log("ERROR: unknown instruction" + "\n" +
+			console.log("ERROR: unknown instruction " + util.hex32(dec) + "\n" +
 				"R-type? " + JSON.stringify(this.decode.r(dec)) + "\n" +
 				"I-type? " + JSON.stringify(this.decode.i(dec)) + "\n" +
 				"S-type? " + JSON.stringify(this.decode.s(dec)) + "\n" +
