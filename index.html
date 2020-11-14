@@ -12,6 +12,15 @@ let util = {
 		return ("00000000" + val.toString(16)).substr(-8).toUpperCase();
 	},
 
+	signExtend: function signExtend(width, val) {
+		let msb = (1 << (width - 1));
+		if (val & msb) {
+			val -= (msb * 2);
+		}
+
+		return val;
+	},
+
 	getElem: function getElem(id) {
 		let elem = null;
 		if ((typeof id) === "string") {
@@ -203,14 +212,10 @@ let cpu = {
 
 		b: function b(instr) {
 			let imm = (((instr >> 31) & 0b1) << 12) | (((instr >> 7) & 0b1) << 11) | (((instr >> 25) & 0b111111) << 5) | (((instr >> 8) & 0b1111) << 1);
-			let imm_msb = (1 << 12);
-			if (imm & imm_msb) {
-				imm -= (imm_msb * 2);
-			}
 
 			return {
 				type: "b",
-				imm:    imm,
+				imm:    util.signExtend(13, imm),
 				funct3: (instr >> 12) &   0b111,
 				rs1:    (instr >> 15) & 0b01111,
 				rs2:    (instr >> 20) & 0b01111,
