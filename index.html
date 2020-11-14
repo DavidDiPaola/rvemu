@@ -398,6 +398,24 @@ let cpu = {
 				break;
 			}
 			break;
+		case 0b0100011:  // store instructions (S-type)
+			dec = this.decode.s(instr);
+			let addr = this.x[dec.rs1] + dec.imm;
+			let data = this.x[dec.rs2];
+			switch (dec.funct3) {
+			case 0x0:  // sb (store byte)
+				mem.write(addr, data & 0xFF);  // TODO what about mem [31:8]?, test
+				break;
+			case 0x1:  // sh (store half)
+				mem.write(addr, data & 0xFFFF);  // TODO what about mem [31:16]?, test
+				break;
+			case 0x2:  // sw (store word)
+				mem.write(addr, data);  // TODO test
+				break;
+			default:
+				this.decodeError(dec);
+				break;
+			}
 		case 0b1110011:  // debugging instructions
 			// todo ecall vs ebreak
 			console.log("break!");
