@@ -536,11 +536,14 @@ let screen = {
 
 		this.context = this.canvas.getContext("2d");
 
-		this.imgd = this.context.createImageData(this.width, this.height);
-		this.context.clearRect(0, 0, this.width, this.height);
+		this.reset();
 	},
 
-	// TODO reset
+	reset: function reset() {
+		this.imgd = this.context.createImageData(this.width, this.height);
+
+		this.context.clearRect(0, 0, this.width, this.height);
+	},
 
 	update: function update(offset, value) {
 		this.imgd.data[offset+0] = (value>>16) & 0xFF;
@@ -785,6 +788,7 @@ let ui = {
 
 		reset: function reset() {
 			cpu.reset();
+			screen.reset();
 
 			this.update();
 		},
