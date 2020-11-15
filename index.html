@@ -106,7 +106,7 @@ let mem = {
 		this.ram[address / 4] = data;
 
 		if ((address >= 0xFB000) && (address <= 0xFEFFF)) {
-			screen.update();
+			screen.update(address - 0xFB000, data);
 		}
 	},
 
@@ -531,25 +531,24 @@ let screen = {
 	init: function init() {
 		this.canvas = util.getElem("screen_canvas");
 
-		this.context = this.canvas.getContext("2d");
 		this.width = this.canvas.width;
 		this.height = this.canvas.height;
 
+		this.context = this.canvas.getContext("2d");
+
+		this.imgd = this.context.createImageData(this.width, this.height);
 		this.context.clearRect(0, 0, this.width, this.height);
 	},
 
-	// TODO update per-pixel
+	// TODO reset
 
-	update: function update() {
-		let imgd = this.context.createImageData(this.width, this.height);
-		for (let i=0; i<imgd.data.length; i+=4) {
-			let pixel = mem.read(0xFB000+(i/4));
-			imgd.data[i+0] = (pixel>>16) & 0xFF;
-			imgd.data[i+1] = (pixel>> 8) & 0xFF;
-			imgd.data[i+2] = (pixel>> 0) & 0xFF;
-			imgd.data[i+3] = 0xFF;
-		}
-		this.context.putImageData(imgd, 0, 0);
+	update: function update(offset, value) {
+		this.imgd.data[offset+0] = (value>>16) & 0xFF;
+		this.imgd.data[offset+1] = (value>> 8) & 0xFF;
+		this.imgd.data[offset+2] = (value>> 0) & 0xFF;
+		this.imgd.data[offset+3] = 0xFF;
+
+		this.context.putImageData(this.imgd, 0, 0);
 	},
 };
 
@@ -901,6 +900,7 @@ let ui = {
 		},
 
 		load: function load() {
+			// TODO clear remaining memory after load
 			this.fileInputElement.click();
 		},
 	},
