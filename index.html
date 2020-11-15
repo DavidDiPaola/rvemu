@@ -99,7 +99,12 @@ let mem = {
 	},
 
 	read: function read(address) {
-		return this.ram[address / 4];
+		if (address == 0xFF004) {
+			return serial.input.getCode();
+		}
+		else {
+			return this.ram[address / 4];
+		}
 	},
 
 	write: function write(address, data) {
@@ -107,6 +112,9 @@ let mem = {
 
 		if ((address >= 0xFB000) && (address <= 0xFEFFF)) {
 			screen.update(address - 0xFB000, data);
+		}
+		else if (address == 0xFF008) {
+			return serial.output.putCode(data);
 		}
 	},
 
@@ -789,6 +797,7 @@ let ui = {
 		reset: function reset() {
 			cpu.reset();
 			screen.reset();
+			serial.reset();  // TODO clear serial UI on reset
 
 			this.update();
 		},
