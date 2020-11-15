@@ -200,7 +200,6 @@ let cpu = {
 		},
 
 		s: function s(instr) {
-			/* TODO is imm signed? */
 			return {
 				type: "s",
 				imm:    (((instr >> 25) & 0b1111111) << 5) | ((instr >> 7) & 0b11111),
@@ -231,10 +230,12 @@ let cpu = {
 		},
 
 		j: function j(instr) {
+			let imm = (((instr >> 31) & 0b1) << 20) | (((instr >> 12) & 0b11111111) << 12) | (((instr >> 20) & 0b1) << 11) | (((instr >> 21) & 0b1111111111) << 1);
+
 			return {
 				type: "j",
-				rd:  (instr >>  7) & 0b01111,
-				imm: (((instr >> 31) & 0b1) << 20) | (((instr >> 12) & 0b11111111) << 12) | (((instr >> 20) & 0b1) << 11) | (((instr >> 21) & 0b1111111111) << 1),
+				rd:  (instr >> 7) & 0b01111,
+				imm: util.signExtend(21, imm),
 			};
 		},
 	},
@@ -289,12 +290,12 @@ let cpu = {
 		}
 
 		const instr = mem.read(this.pc);
-		this.pc += 4;
 
 		// TODO error messages for invalid instructions
+		let wasJump = false;
 		let dec = instr;
 		const opcode = instr & 0b1111111;
-		console.log("instr: 0x" + instr.toString(16) + " opcode: 0b" + opcode.toString(2));
+		console.log("addr: 0x" + util.hex32(this.pc) + " instr: 0x" + instr.toString(16) + " opcode: 0b" + opcode.toString(2));
 		switch (opcode) {
 		case 0b0110011:  // arithmetic instructions (R-type)
 			dec = this.decode.r(instr);
@@ -440,25 +441,51 @@ let cpu = {
 				// TODO test
 				if (this.x[dec.rs1] == this.x[dec.rs2]) {
 					this.pc += dec.imm;
+					wasJump = true;
 				}
 				break;
 			case 0x1:  // bne (branch if not equal)
 				// TODO test
 				if (this.x[dec.rs1] != this.x[dec.rs2]) {
 					this.pc += dec.imm;
+					wasJump = true;
 				}
 				break;
 			case 0x4:  // blt (branch if less than)
 				// TODO test
 				if (this.x[dec.rs1] < this.x[dec.rs2]) {
 					this.pc += dec.imm;
+					wasJump = true;
 				}
 				break;
 			case 0x5:  // bge (branch if greater than or equal)
 				// TODO test
 				if (this.x[dec.rs1] >= this.x[dec.rs2]) {
 					this.pc += dec.imm;
+					wasJump = true;
 				}
+				break;
+			default:
+				this.decodeError(dec);
+				break;
+			}
+			break;
+		case 0b1101111:  // jal (jump and link) instruction (J-type)
+			dec = this.decode.j(instr);
+			this.x[dec.rd] = this.pc + 4;
+			this.pc += dec.imm;
+			wasJump = true;
+			break;
+		case 0b1100111:  // jump and link instructions (I-type)
+			dec = this.decode.i(instr);
+			switch (dec.funct3) {
+			case 0x0:  // jalr (jump and link with register)
+				this.x[dec.rd] = this.pc + 4;
+				this.pc = this.x[dec.rs1] + util.signExtend(12, dec.imm);
+				wasJump = true;
+				break;
+			default:
+				this.decodeError(dec);
 				break;
 			}
 			break;
@@ -474,6 +501,10 @@ let cpu = {
 
 		// TODO handle writes to x0 properly
 		this.x[0] = 0;
+
+		if (!wasJump && !this.breakSet && !this.haltSet) {
+			this.pc += 4;
+		}
 	},
 };
 
@@ -875,7 +906,7 @@ window.onload = function onload() {
 
 	ui.serial.output.putChar("?");
 
-	console.log(JSON.stringify(cpu.decode.b(0xfe51c6e3)));
+	console.log(JSON.stringify(cpu.decode.i(0x00008067)));
 
 	/*
 	let buffer = screen.newBuffer();
