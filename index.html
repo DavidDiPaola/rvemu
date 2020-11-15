@@ -104,6 +104,10 @@ let mem = {
 
 	write: function write(address, data) {
 		this.ram[address / 4] = data;
+
+		if ((address >= 0xFB000) && (address <= 0xFEFFF)) {
+			screen.update();
+		}
 	},
 
 	// TODO button to reset memory back to state after assemble/load
@@ -295,7 +299,7 @@ let cpu = {
 		let wasJump = false;
 		let dec = instr;
 		const opcode = instr & 0b1111111;
-		console.log("addr: 0x" + util.hex32(this.pc) + " instr: 0x" + instr.toString(16) + " opcode: 0b" + opcode.toString(2));
+		//console.log("addr: 0x" + util.hex32(this.pc) + " instr: 0x" + instr.toString(16) + " opcode: 0b" + opcode.toString(2));
 		switch (opcode) {
 		case 0b0110011:  // arithmetic instructions (R-type)
 			dec = this.decode.r(instr);
@@ -534,16 +538,12 @@ let screen = {
 		this.context.clearRect(0, 0, this.width, this.height);
 	},
 
-	/* TODO use mem.ram */
+	// TODO update per-pixel
 
-	newBuffer: function newBuffer() {
-		return new Uint32Array(this.width * this.height);
-	},
-
-	set: function set(buffer) {
+	update: function update() {
 		let imgd = this.context.createImageData(this.width, this.height);
 		for (let i=0; i<imgd.data.length; i+=4) {
-			let pixel = buffer[i/4];
+			let pixel = mem.read(0xFB000+(i/4));
 			imgd.data[i+0] = (pixel>>16) & 0xFF;
 			imgd.data[i+1] = (pixel>> 8) & 0xFF;
 			imgd.data[i+2] = (pixel>> 0) & 0xFF;
@@ -915,14 +915,6 @@ window.onload = function onload() {
 	ui.init();
 
 	ui.serial.output.putChar("?");
-
-	console.log(JSON.stringify(cpu.decode.i(0x00008067)));
-
-	/*
-	let buffer = screen.newBuffer();
-	buffer[0] = 0xFF00FF;
-	screen.set(buffer);
-	*/
 }
 </script>
 <style>
