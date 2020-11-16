@@ -84,6 +84,12 @@ let mem = {
 		/* TODO test on big endian system */
 		const input = new Uint8Array(buffer);
 		const input_length_rounded = input.length & ~0b11;
+
+		let diff = input.length - input_length_rounded;
+		if (diff > 0) {
+			console.log("WARNING: binary size is not aligned! Ignoring final "+diff+" bytes.");
+		}
+
 		for (let i=0; i<input_length_rounded; i+=4) {
 			this.ram[i / 4] = (
 				(input[i+0] <<  0) |
@@ -92,9 +98,9 @@ let mem = {
 				(input[i+3] << 24)
 			);
 		}
-		let diff = input.length - input_length_rounded;
-		if (diff > 0) {
-			console.log("WARNING: binary size is not aligned! Ignoring final "+diff+" bytes.");
+		
+		for (let i=input_length_rounded/4; i<this.ram.length; i++) {
+			this.ram[i] = 0;
 		}
 	},
 
@@ -913,7 +919,6 @@ let ui = {
 		},
 
 		load: function load() {
-			// TODO clear remaining memory after load
 			this.fileInputElement.click();
 		},
 	},
