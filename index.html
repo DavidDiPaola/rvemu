@@ -569,6 +569,54 @@ let screen = {
 	},
 };
 
+let sound = {
+	audioContext: null,
+	gain: [null, null, null],
+	osc: [null, null, null],
+
+	// TODO LFSR noise channel
+
+	init: function init() {
+		this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+		for (let i=0; i<3; i++) {
+			let gain = this.audioContext.createGain();
+			gain.connect(this.audioContext.destination);
+			this.gain[i] = gain;
+		}
+	},
+
+	set: function set(channel, freq, vol) {
+		if ( (channel < 0) || (channel > 3) ) {
+			console.log("ERROR: sound.set(): channel is invalid: " + channel);
+			return;
+		}
+		if ( (freq < 20) || (freq > 20000) ) {
+			console.log("ERROR: sound.set(): freq is invalid: " + freq);
+			return;
+		}
+		if ( (vol < 0) || (vol > 15) ) {
+			console.log("ERROR: sound.set(): vol is invalid: " + vol);
+			return;
+		}
+
+		let osc = this.osc[channel];
+		if (osc) {
+			osc.stop();
+		}
+
+		let gain = this.gain[channel];
+		gain.gain.value = (vol / 15);  // TODO volume curve
+
+		osc = this.audioContext.createOscillator();
+		osc.type = "square";
+		osc.connect(gain);
+		osc.frequency.setValueAtTime(freq, this.audioContext.currentTime);
+		osc.start();
+		this.osc[channel] = osc;
+	},
+};
+
 let serial = {
 	output: {
 		putCode: function putCode(code) {
@@ -928,9 +976,11 @@ window.onload = function onload() {
 	mem.init();
 	cpu.init();
 	screen.init();
+	sound.init();
 	serial.reset();
 
 	ui.init();
+
 }
 </script>
 <style>
