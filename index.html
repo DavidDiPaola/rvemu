@@ -111,15 +111,17 @@ let mem = {
 		else if ( (address >= 0xFF100) && (address <= 0xFF1FF) ) {
 			return timer.read(address - 0xFF100);
 		}
+		else if ( (address >= 0xFF200) && (address <= 0xFF2FF) ) {
+			return sound.read(address - 0xFF200);
+		}
 		else {
 			return this.ram[address / 4];
 		}
 	},
 
 	write: function write(address, data) {
-		this.ram[address / 4] = data;
-
-		if ((address >= 0xFB000) && (address <= 0xFEFFF)) {
+		if ( (address >= 0xFB000) && (address <= 0xFEFFF) ) {
+			this.ram[address / 4] = data;
 			screen.update(address - 0xFB000, data);
 		}
 		else if ( (address >= 0xFF000) && (address <= 0xFF0FF) ) {
@@ -127,6 +129,12 @@ let mem = {
 		}
 		else if ( (address >= 0xFF100) && (address <= 0xFF1FF) ) {
 			timer.write(address - 0xFF100, data);
+		}
+		else if ( (address >= 0xFF200) && (address <= 0xFF2FF) ) {
+			sound.write(address - 0xFF200, data);
+		}
+		else {
+			this.ram[address / 4] = data;
 		}
 	},
 
@@ -598,37 +606,89 @@ let sound = {
 		}
 	},
 
-	set: function set(channel, freq, vol) {
-		if ( (channel < 0) || (channel > 3) ) {
-			console.log("ERROR: sound.set(): channel is invalid: " + channel);
-			return;
-		}
-		if ( (freq < 20) || (freq > 20000) ) {
-			console.log("ERROR: sound.set(): freq is invalid: " + freq);
-			return;
-		}
-		if ( (vol < 0) || (vol > 15) ) {
-			console.log("ERROR: sound.set(): vol is invalid: " + vol);
-			return;
-		}
-
+	setFreq: function setFreq(channel, freq) {
 		let osc = this.osc[channel];
 		if (osc) {
 			osc.stop();
 		}
-
+		
 		let gain = this.gain[channel];
-		gain.gain.value = (vol / 15);  // TODO volume curve
-
 		osc = this.audioContext.createOscillator();
 		osc.type = "square";
 		osc.connect(gain);
 		osc.frequency.setValueAtTime(freq, this.audioContext.currentTime);
 		osc.start();
+
 		this.osc[channel] = osc;
 	},
 
-	// TODO implement read(), write()
+	getFreq: function getFreq(channel) {
+		let freq = 0;
+
+		let osc = this.osc[channel];
+		if (osc) {
+			freq = osc.frequency.value;
+		}
+		
+		return freq;
+	},
+
+	setVol: function setVol(channel, vol) {
+		vol &= 0b111111;
+
+		let gain = this.gain[channel];
+		gain.gain.value = (vol / 63);  // TODO volume curve
+	},
+
+	getVol: function getVol(channel) {
+		let gain = this.gain[channel];
+		return Math.floor(gain.gain.value * 63);  // TODO test, volume de-curve
+	},
+
+	read: function read(address) {
+		let data = 0;
+
+		let channel = 0;
+		switch (address) {
+		case 0x00:
+			console.log("TODO sound control register read");
+			break;
+		case 0x04:
+		case 0x0C:
+		case 0x14:
+			channel = (address - 0x04) / 0x8;
+			data = this.getFreq(channel);
+			break;
+		case 0x08:
+		case 0x10:
+		case 0x18:
+			channel = (address - 0x08) / 0x8;
+			data = this.getVol(channel);
+			break;
+		}
+
+		return data;
+	},
+
+	write: function write(address, data) {
+		switch (address) {
+		case 0x00:
+			console.log("TODO sound control register write");
+			break;
+		case 0x04:
+		case 0x0C:
+		case 0x14:
+			channel = (address - 0x04) / 0x8;
+			this.setFreq(channel, data);
+			break;
+		case 0x08:
+		case 0x10:
+		case 0x18:
+			channel = (address - 0x08) / 0x8;
+			this.setVol(channel, data);
+			break;
+		}
+	},
 };
 
 let serial = {
@@ -1135,8 +1195,17 @@ window.onload = function onload() {
 	serial.reset();
 	timer.init();
 
+	/*
+	// sound test
+	mem.write(0xFF204, 440);
+	mem.write(0xFF208, 63);
+	*/
+
+	/*
+	// timer test
 	mem.write(0xFF104, 1000);
 	mem.write(0xFF100, 0b11);
+	*/
 
 	ui.init();
 
