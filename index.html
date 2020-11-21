@@ -602,108 +602,6 @@ let screen = {
 	},
 };
 
-let sound = {
-	audioContext: null,
-	gain: [null, null, null],
-	osc: [null, null, null],
-
-	// TODO LFSR noise channel
-
-	init: function init() {
-		this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-		for (let i=0; i<3; i++) {
-			let gain = this.audioContext.createGain();
-			gain.connect(this.audioContext.destination);
-			this.gain[i] = gain;
-		}
-	},
-
-	setFreq: function setFreq(channel, freq) {
-		let osc = this.osc[channel];
-		if (osc) {
-			osc.stop();
-		}
-		
-		let gain = this.gain[channel];
-		osc = this.audioContext.createOscillator();
-		osc.type = "square";
-		osc.connect(gain);
-		osc.frequency.setValueAtTime(freq, this.audioContext.currentTime);
-		osc.start();
-
-		this.osc[channel] = osc;
-	},
-
-	getFreq: function getFreq(channel) {
-		let freq = 0;
-
-		let osc = this.osc[channel];
-		if (osc) {
-			freq = osc.frequency.value;
-		}
-		
-		return freq;
-	},
-
-	setVol: function setVol(channel, vol) {
-		vol &= 0b111111;
-
-		let gain = this.gain[channel];
-		gain.gain.value = (vol / 63);  // TODO volume curve
-	},
-
-	getVol: function getVol(channel) {
-		let gain = this.gain[channel];
-		return Math.floor(gain.gain.value * 63);  // TODO test, volume de-curve
-	},
-
-	read: function read(address) {
-		let data = 0;
-
-		let channel = 0;
-		switch (address) {
-		case 0x00:
-			console.log("TODO sound control register read");
-			break;
-		case 0x04:
-		case 0x0C:
-		case 0x14:
-			channel = (address - 0x04) / 0x8;
-			data = this.getFreq(channel);
-			break;
-		case 0x08:
-		case 0x10:
-		case 0x18:
-			channel = (address - 0x08) / 0x8;
-			data = this.getVol(channel);
-			break;
-		}
-
-		return data;
-	},
-
-	write: function write(address, data) {
-		switch (address) {
-		case 0x00:
-			console.log("TODO sound control register write");
-			break;
-		case 0x04:
-		case 0x0C:
-		case 0x14:
-			channel = (address - 0x04) / 0x8;
-			this.setFreq(channel, data);
-			break;
-		case 0x08:
-		case 0x10:
-		case 0x18:
-			channel = (address - 0x08) / 0x8;
-			this.setVol(channel, data);
-			break;
-		}
-	},
-};
-
 let serial = {
 	output: {
 		putCode: function putCode(code) {
@@ -886,6 +784,108 @@ let timer = {
 			timerNo = (address - 0x04) / 0x8;
 			load = data;
 			this.loadSet(timerNo, load);
+			break;
+		}
+	},
+};
+
+let sound = {
+	audioContext: null,
+	gain: [null, null, null],
+	osc: [null, null, null],
+
+	// TODO LFSR noise channel
+
+	init: function init() {
+		this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+		for (let i=0; i<3; i++) {
+			let gain = this.audioContext.createGain();
+			gain.connect(this.audioContext.destination);
+			this.gain[i] = gain;
+		}
+	},
+
+	setFreq: function setFreq(channel, freq) {
+		let osc = this.osc[channel];
+		if (osc) {
+			osc.stop();
+		}
+		
+		let gain = this.gain[channel];
+		osc = this.audioContext.createOscillator();
+		osc.type = "square";
+		osc.connect(gain);
+		osc.frequency.setValueAtTime(freq, this.audioContext.currentTime);
+		osc.start();
+
+		this.osc[channel] = osc;
+	},
+
+	getFreq: function getFreq(channel) {
+		let freq = 0;
+
+		let osc = this.osc[channel];
+		if (osc) {
+			freq = osc.frequency.value;
+		}
+		
+		return freq;
+	},
+
+	setVol: function setVol(channel, vol) {
+		vol &= 0b111111;
+
+		let gain = this.gain[channel];
+		gain.gain.value = (vol / 63);  // TODO volume curve
+	},
+
+	getVol: function getVol(channel) {
+		let gain = this.gain[channel];
+		return Math.floor(gain.gain.value * 63);  // TODO test, volume de-curve
+	},
+
+	read: function read(address) {
+		let data = 0;
+
+		let channel = 0;
+		switch (address) {
+		case 0x00:
+			console.log("TODO sound control register read");
+			break;
+		case 0x04:
+		case 0x0C:
+		case 0x14:
+			channel = (address - 0x04) / 0x8;
+			data = this.getFreq(channel);
+			break;
+		case 0x08:
+		case 0x10:
+		case 0x18:
+			channel = (address - 0x08) / 0x8;
+			data = this.getVol(channel);
+			break;
+		}
+
+		return data;
+	},
+
+	write: function write(address, data) {
+		switch (address) {
+		case 0x00:
+			console.log("TODO sound control register write");
+			break;
+		case 0x04:
+		case 0x0C:
+		case 0x14:
+			channel = (address - 0x04) / 0x8;
+			this.setFreq(channel, data);
+			break;
+		case 0x08:
+		case 0x10:
+		case 0x18:
+			channel = (address - 0x08) / 0x8;
+			this.setVol(channel, data);
 			break;
 		}
 	},
