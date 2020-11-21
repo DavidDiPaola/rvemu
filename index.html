@@ -105,7 +105,10 @@ let mem = {
 	},
 	
 	read: function read(address) {
-		if ( (address >= 0xFF000) && (address <= 0xFF0FF) ) {
+		if ( (address >= 0xFB000) && (address <= 0xFEFFF) ) {
+			return screen.read(address - 0xFB000);
+		}
+		else if ( (address >= 0xFF000) && (address <= 0xFF0FF) ) {
 			return serial.read(address - 0xFF000);
 		}
 		else if ( (address >= 0xFF100) && (address <= 0xFF1FF) ) {
@@ -121,8 +124,7 @@ let mem = {
 
 	write: function write(address, data) {
 		if ( (address >= 0xFB000) && (address <= 0xFEFFF) ) {
-			this.ram[address / 4] = data;
-			screen.update(address - 0xFB000, data);
+			screen.write(address - 0xFB000, data);
 		}
 		else if ( (address >= 0xFF000) && (address <= 0xFF0FF) ) {
 			serial.write(address - 0xFF000, data);
@@ -555,18 +557,21 @@ let cpu = {
 };
 
 let screen = {
+	width: 64,
+	height: 64,
+
 	canvas: null,
 	context: null,
-	width: 0,
-	height: 0,
+	ram: null,
 
 	init: function init() {
 		this.canvas = util.getElem("screen_canvas");
-
-		this.width = this.canvas.width;
-		this.height = this.canvas.height;
+		this.canvas.width  = this.width;
+		this.canvas.height = this.height;
 
 		this.context = this.canvas.getContext("2d");
+
+		this.ram = new Uint32Array(this.width * this.height);
 
 		this.reset();
 	},
@@ -575,17 +580,25 @@ let screen = {
 		this.imgd = this.context.createImageData(this.width, this.height);
 
 		this.context.clearRect(0, 0, this.width, this.height);
+
+		for (let i=0; i<this.ram.length; i++) {
+			this.ram[i] = 0;
+		}
 	},
 
-	// TODO implement read(), write()
+	read: function read(address) {
+		return this.ram[address / 4];
+	},
 
-	update: function update(offset, value) {
-		this.imgd.data[offset+0] = (value>>16) & 0xFF;
-		this.imgd.data[offset+1] = (value>> 8) & 0xFF;
-		this.imgd.data[offset+2] = (value>> 0) & 0xFF;
-		this.imgd.data[offset+3] = 0xFF;
+	write: function write(address, value) {
+		this.imgd.data[address+0] = (value>>16) & 0xFF;
+		this.imgd.data[address+1] = (value>> 8) & 0xFF;
+		this.imgd.data[address+2] = (value>> 0) & 0xFF;
+		this.imgd.data[address+3] = 0xFF;
 
 		this.context.putImageData(this.imgd, 0, 0);
+
+		this.ram[address / 4] = value;
 	},
 };
 
@@ -1243,7 +1256,8 @@ body {
 	image-rendering: -webkit-optimize-contrast; /* webkit */
 	image-rendering: -moz-crisp-edges; /* Firefox */
 
-	width: 20em;
+	width:  20em;
+	height: 20em;
 }
 
 .debug_button {
@@ -1268,7 +1282,7 @@ body {
 </head>
 <body>
 	<div class="chunk">
-		<canvas id="screen_canvas" height="64" width="64"></canvas>
+		<canvas id="screen_canvas"></canvas>
 	</div>
 
 	<div class="chunk">
@@ -1444,24 +1458,29 @@ All registers are 32bit.
 ========================================
             TIMER REGISTERS
 ========================================
-0xFF100 control flags
-  bit 1 -- enable timer interrupt
+0xFF100 timer 0 control flags
+  bit 1 -- auto-repeat
   bit 0 -- enable timer
-0xFF104 timer value
-0xFF108 timer compare value
+0xFF104 timer 0 value (milliseconds)
+0xFF108 timer 1 control flags
+0xFF10C timer 1 value
+0xFF110 timer 2 control flags
+0xFF114 timer 2 value
+0xFF118 timer 3 control flags
+0xFF11C timer 3 value
 
 ========================================
             SOUND REGISTERS
 ========================================
 0xFF200 control flags
-0xFF2xx channel 1 frequency
-0xFF2xx channel 1 volume
-0xFF2xx channel 2 frequency
-0xFF2xx channel 2 volume
-0xFF2xx channel 3 frequency
-0xFF2xx channel 3 volume
-0xFF2xx noise volume
-0xFF2xx noise frequency
+0xFF204 channel 1 frequency
+0xFF208 channel 1 volume
+0xFF20C channel 2 frequency
+0xFF210 channel 2 volume
+0xFF214 channel 3 frequency
+0xFF218 channel 3 volume
+0xFF21C noise volume
+0xFF220 noise frequency
 
 ========================================
            GAMEPAD REGISTERS
