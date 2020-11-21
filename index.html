@@ -103,10 +103,13 @@ let mem = {
 			this.ram[i] = 0;
 		}
 	},
-
+	
 	read: function read(address) {
 		if (address == 0xFF004) {
 			return serial.input.getCode();
+		}
+		else if ( (address >= 0xFF100) && (address <= 0xFF1FF) ) {
+			return timer.read(address);
 		}
 		else {
 			return this.ram[address / 4];
@@ -120,7 +123,10 @@ let mem = {
 			screen.update(address - 0xFB000, data);
 		}
 		else if (address == 0xFF008) {
-			return serial.output.putCode(data);
+			serial.output.putCode(data);
+		}
+		else if ( (address >= 0xFF100) && (address <= 0xFF1FF) ) {
+			timer.write(address, data);
 		}
 	},
 
@@ -534,6 +540,10 @@ let cpu = {
 			this.pc += 4;
 		}
 	},
+
+	interrupt: function interrupt(intNo) {
+		console.log("TODO interrupt " + intNo + " asserted");
+	},
 };
 
 let screen = {
@@ -558,6 +568,8 @@ let screen = {
 
 		this.context.clearRect(0, 0, this.width, this.height);
 	},
+
+	// TODO implement read(), write()
 
 	update: function update(offset, value) {
 		this.imgd.data[offset+0] = (value>>16) & 0xFF;
@@ -615,6 +627,8 @@ let sound = {
 		osc.start();
 		this.osc[channel] = osc;
 	},
+
+	// TODO implement read(), write()
 };
 
 let serial = {
@@ -660,6 +674,135 @@ let serial = {
 
 	reset: function reset() {
 		this.input.reset();
+	},
+
+	// TODO implement read(), write()
+};
+
+let timer = {
+	timers: [],
+
+	init: function init() {
+		for (let i=0; i<4; i++) {
+			this.timers.push({
+				enabled: false,
+				repeat: false,
+				load: 0,
+				fireCallback: function timer_fire() {
+					cpu.interrupt(i);
+				},
+				interval: null,
+			});
+		}
+	},
+
+	stopInterval: function stopInterval(timer) {
+		if (timer.interval) {
+			window.clearInterval(timer.interval);
+			timer.interval = null;
+		}
+	},
+
+	startInterval: function startInterval(timer) {
+		let self = this;
+		timer.interval = window.setInterval(function () {
+			timer.fireCallback();
+
+			if (!timer.repeat) {
+				self.stopInterval(timer);
+			}
+		}, timer.load);
+	},
+
+	loadSet: function loadSet(timerNo, load) {
+		let timer = this.timers[timerNo];
+
+		let change = timer.load != load;
+		if (change) {
+			this.stopInterval(timer);
+
+			timer.load = load;
+
+			if (timer.enabled) {
+				this.startInterval(timer);
+			}
+		}
+	},
+
+	ctrlSet: function ctrlSet(timerNo, repeat, enable) {
+		let timer = this.timers[timerNo];
+
+		let change = (timer.repeat != repeat) || (timer.enabled != enable);
+		if (change) {
+			this.stopInterval(timer);
+
+			timer.enabled = enable;
+			timer.repeat = repeat;
+
+			if (enable) {
+				this.startInterval(timer);
+			}
+
+			this.timers[timerNo] = timer;
+		}
+	},
+
+	read: function read(address) {
+		let data = 0;
+
+		let timerNo = 0;
+		let timer = null;
+		switch (address) {
+		case 0xFF100:
+		case 0xFF108:
+		case 0xFF110:
+		case 0xFF118:
+			timerNo = (address - 0xFF100) / 0x8;
+			timer = this.timers[timerNo];
+			if (timer.repeat) {
+				data |= (1 << 1);
+			}
+			if (timer.enabled) {
+				data |= (1 << 0);
+			}
+			break;
+		case 0xFF104:
+		case 0xFF10C:
+		case 0xFF114:
+		case 0xFF11C:
+			timerNo = (address - 0xFF100) / 0x8;
+			timer = this.timers[timerNo];
+			data = timer.load;
+			break;
+		}
+
+		return data;
+	},
+
+	write: function write(address, data) {
+		let timerNo = 0;
+		let repeat = false
+		let enable = false;
+		let load = 0;
+		switch (address) {
+		case 0xFF100:
+		case 0xFF108:
+		case 0xFF110:
+		case 0xFF118:
+			timerNo = (address - 0xFF100) / 0x8;
+			repeat = !!(data & (1 << 1));
+			enable = !!(data & (1 << 0));
+			this.ctrlSet(timerNo, repeat, enable);
+			break;
+		case 0xFF104:
+		case 0xFF10C:
+		case 0xFF114:
+		case 0xFF11C:
+			timerNo = (address - 0xFF104) / 0x8;
+			load = data;
+			this.loadSet(timerNo, load);
+			break;
+		}
 	},
 };
 
@@ -978,6 +1121,10 @@ window.onload = function onload() {
 	screen.init();
 	sound.init();
 	serial.reset();
+	timer.init();
+
+	mem.write(0xFF104, 1000);
+	mem.write(0xFF100, 0b11);
 
 	ui.init();
 
