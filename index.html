@@ -105,11 +105,11 @@ let mem = {
 	},
 	
 	read: function read(address) {
-		if (address == 0xFF004) {
-			return serial.input.getCode();
+		if ( (address >= 0xFF000) && (address <= 0xFF0FF) ) {
+			return serial.read(address - 0xFF000);
 		}
 		else if ( (address >= 0xFF100) && (address <= 0xFF1FF) ) {
-			return timer.read(address);
+			return timer.read(address - 0xFF100);
 		}
 		else {
 			return this.ram[address / 4];
@@ -122,11 +122,11 @@ let mem = {
 		if ((address >= 0xFB000) && (address <= 0xFEFFF)) {
 			screen.update(address - 0xFB000, data);
 		}
-		else if (address == 0xFF008) {
-			serial.output.putCode(data);
+		else if ( (address >= 0xFF000) && (address <= 0xFF0FF) ) {
+			serial.write(address - 0xFF000, data);
 		}
 		else if ( (address >= 0xFF100) && (address <= 0xFF1FF) ) {
-			timer.write(address, data);
+			timer.write(address - 0xFF100, data);
 		}
 	},
 
@@ -676,7 +676,19 @@ let serial = {
 		this.input.reset();
 	},
 
-	// TODO implement read(), write()
+	// TODO control register
+
+	read: function read(address) {
+		if (address == 0x4) {
+			return this.input.getCode();
+		}
+	},
+
+	write: function write(address, data) {
+		if (address == 0x8) {
+			this.output.putCode(data);
+		}
+	},
 };
 
 let timer = {
@@ -753,11 +765,11 @@ let timer = {
 		let timerNo = 0;
 		let timer = null;
 		switch (address) {
-		case 0xFF100:
-		case 0xFF108:
-		case 0xFF110:
-		case 0xFF118:
-			timerNo = (address - 0xFF100) / 0x8;
+		case 0x00:
+		case 0x08:
+		case 0x10:
+		case 0x18:
+			timerNo = address / 0x8;
 			timer = this.timers[timerNo];
 			if (timer.repeat) {
 				data |= (1 << 1);
@@ -766,11 +778,11 @@ let timer = {
 				data |= (1 << 0);
 			}
 			break;
-		case 0xFF104:
-		case 0xFF10C:
-		case 0xFF114:
-		case 0xFF11C:
-			timerNo = (address - 0xFF100) / 0x8;
+		case 0x04:
+		case 0x0C:
+		case 0x14:
+		case 0x1C:
+			timerNo = (address - 0x04) / 0x8;
 			timer = this.timers[timerNo];
 			data = timer.load;
 			break;
@@ -785,20 +797,20 @@ let timer = {
 		let enable = false;
 		let load = 0;
 		switch (address) {
-		case 0xFF100:
-		case 0xFF108:
-		case 0xFF110:
-		case 0xFF118:
-			timerNo = (address - 0xFF100) / 0x8;
+		case 0x00:
+		case 0x08:
+		case 0x10:
+		case 0x18:
+			timerNo = address / 0x8;
 			repeat = !!(data & (1 << 1));
 			enable = !!(data & (1 << 0));
 			this.ctrlSet(timerNo, repeat, enable);
 			break;
-		case 0xFF104:
-		case 0xFF10C:
-		case 0xFF114:
-		case 0xFF11C:
-			timerNo = (address - 0xFF104) / 0x8;
+		case 0x04:
+		case 0x0C:
+		case 0x14:
+		case 0x1C:
+			timerNo = (address - 0x04) / 0x8;
 			load = data;
 			this.loadSet(timerNo, load);
 			break;
