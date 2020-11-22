@@ -154,6 +154,7 @@ let cpu = {
 	x: null,
 	breakSet: false,
 	haltSet: false,
+	interruptsEnabled: false,
 	stepInterval: null,
 
 	init: function init() {
@@ -539,10 +540,22 @@ let cpu = {
 			dec = this.decode.u(instr);
 			this.x[dec.rd] = this.pc + (dec.imm << 12);
 			break;
-		case 0b1110011:  // debugging instructions
-			// todo ecall vs ebreak
-			console.log("break!");
-			this.brk();
+		case 0b1110011:  // system instructions (I-type)
+			dec = this.decode.i(instr);
+			switch (dec.funct3) {
+			case 0x0:  // ecall and ebreak
+				// todo ecall vs ebreak
+				console.log("break!");
+				this.brk();
+				break;
+			case 0x5:  // csrrwi (control and status register read write immediate) instruction
+				// TODO verify?: (i=0b001100001000, rs1=(1|0), rd=0)
+				this.interruptsEnabled = !!(dec.rs1 != 0);
+				break;
+			default:
+				this.decodeError(dec);
+				break;
+			}
 			break;
 		default:
 			this.decodeError(dec);
@@ -1535,8 +1548,10 @@ jal  rd, imm (rd=PC+4, PC+=imm)
 jalr rd, rs1, imm (PC+rs1 jal)
 (imm is 12bit ?signed?)
 
-Special:
+System:
 ebreak (break)
+csrw mie, 0 (disable interrupts)
+csrw mie, 1 (enable interrupts)
 
 ========================================
           ASSEMBLER DIRECTIVES
