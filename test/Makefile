@@ -1,13 +1,13 @@
 PREFIX ?= riscv64-unknown-elf-
 
 TARGET_AS ?= $(PREFIX)as
-_TARGET_AFLAGS = -march=rv32e $(TARGET_AFLAGS)
+_TARGET_AFLAGS = -march=rv32e $(TARGET_AFLAGS) -g
 
 TARGET_OBJCOPY ?= $(PREFIX)objcopy
 _TARGET_OCFLAGS = --output-target binary
 
 TARGET_OBJDUMP ?= $(PREFIX)objdump
-_TARGET_ODFLAGS = --disassemble-all
+_TARGET_ODFLAGS = --disassemble-all --source-comment
 
 .PHONY: clean
 clean:
