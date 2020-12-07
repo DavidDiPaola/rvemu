@@ -8,8 +8,10 @@
 
 let util = {
 	hex32: function hex32(val) {
+		let val32u = val < 0 ? 0x100000000 + val : val;
+
 		/* TODO might need optimization */
-		return ("00000000" + val.toString(16)).substr(-8).toUpperCase();
+		return ("00000000" + val32u.toString(16)).substr(-8).toUpperCase();
 	},
 
 	signExtend: function signExtend(width, val) {
@@ -155,6 +157,10 @@ let cpu = {
 	breakSet: false,
 	haltSet: false,
 	interruptsEnabled: false,
+	interruptsPending: 0,
+	interruptReturnAddress: 0,
+	interruptRunning: false,
+	wfiSet: false,
 	stepInterval: null,
 
 	init: function init() {
@@ -231,19 +237,29 @@ let cpu = {
 		},
 
 		i: function i(instr) {
+			let imm = (instr >> 20) & 0b111111111111;
+
 			return {
 				type: "i",
-				rd:     (instr >>  7) &        0b01111,
-				funct3: (instr >> 12) &          0b111,
-				rs1:    (instr >> 15) &        0b01111,
-				imm:    (instr >> 20) & 0b111111111111,
+				rd:     (instr >>  7) & 0b01111,
+				funct3: (instr >> 12) &   0b111,
+				rs1:    (instr >> 15) & 0b01111,
+				imm: {
+					unsigned: imm,
+					signed: util.signExtend(12, imm),
+				},
 			};
 		},
 
 		s: function s(instr) {
+			let imm = (((instr >> 25) & 0b1111111) << 5) | ((instr >> 7) & 0b11111);
+
 			return {
 				type: "s",
-				imm:    (((instr >> 25) & 0b1111111) << 5) | ((instr >> 7) & 0b11111),
+				imm: {
+					unsigned: imm,
+					signed: util.signExtend(12, imm),
+				},
 				funct3: (instr >> 12) &   0b111,
 				rs1:    (instr >> 15) & 0b01111,
 				rs2:    (instr >> 20) & 0b01111,
@@ -255,7 +271,10 @@ let cpu = {
 
 			return {
 				type: "b",
-				imm:    util.signExtend(13, imm),
+				imm: {
+					unsigned: imm,
+					signed: util.signExtend(13, imm),
+				},
 				funct3: (instr >> 12) &   0b111,
 				rs1:    (instr >> 15) & 0b01111,
 				rs2:    (instr >> 20) & 0b01111,
@@ -263,10 +282,15 @@ let cpu = {
 		},
 
 		u: function u(instr) {
+			let imm = (instr >> 12) & 0b11111111111111111111;
+
 			return {
 				type: "u",
 				rd:  (instr >>  7) &                0b01111,
-				imm: (instr >> 12) & 0b11111111111111111111,
+				imm: {
+					unsigned: imm,
+					signed: util.signExtend(20, imm),
+				},
 			};
 		},
 
@@ -276,7 +300,10 @@ let cpu = {
 			return {
 				type: "j",
 				rd:  (instr >> 7) & 0b01111,
-				imm: util.signExtend(21, imm),
+				imm: {
+					unsigned: imm,
+					signed: util.signExtend(21, imm),
+				},
 			};
 		},
 	},
@@ -326,8 +353,39 @@ let cpu = {
 	},
 
 	step: function step() {
-		if (this.haltSet) {
+		if (this.haltSet || this.wfiSet) {
 			return;
+		}
+
+		if (
+			this.interruptsEnabled
+			&&
+			(this.interruptsPending !== 0)
+			&&
+			!this.interruptRunning
+		) {
+			let intNo = -1;
+			for (let i=31; i>=0; i--) {
+				if ( (this.interruptsPending & (1 << i)) !== 0) {
+					intNo = i;
+					break;
+				}
+			}
+			if (intNo < 0) {
+				console.log("ERROR: no interrupts pending!");
+				return;
+			}
+
+			this.interruptRunning = true;
+
+			this.interruptReturnAddress = this.pc;
+
+			let address = 0xFFFE8 + (intNo * 4);
+			this.pc = mem.read(address);
+
+			this.interruptsPending &= ~(1 << intNo);
+
+			console.log( "DEBUG executing interrupt " + intNo + " (" + util.hex32(address) + ") at " + util.hex32(this.pc) );
 		}
 
 		const instr = mem.read(this.pc);
@@ -394,38 +452,38 @@ let cpu = {
 			dec = this.decode.i(instr);
 			switch (dec.funct3) {
 			case 0x0:  // addi (add immediate)
-				this.x[dec.rd] = this.x[dec.rs1] + dec.imm;
+				this.x[dec.rd] = this.x[dec.rs1] + dec.imm.signed;
 				break;
 			case 0x4:  // xori (xor immediate) todo test
-				this.x[dec.rd] = this.x[dec.rs1] ^ dec.imm;
+				this.x[dec.rd] = this.x[dec.rs1] ^ dec.imm.unsigned;
 				break;
 			case 0x6:  // ori (or immediate) todo test
-				this.x[dec.rd] = this.x[dec.rs1] | dec.imm;
+				this.x[dec.rd] = this.x[dec.rs1] | dec.imm.unsigned;
 				break;
 			case 0x7:  // andi (and immediate) todo test
-				this.x[dec.rd] = this.x[dec.rs1] & dec.imm;
+				this.x[dec.rd] = this.x[dec.rs1] & dec.imm.unsigned;
 				break;
 			case 0x1:  // slli (shift left logical immediate) todo test
-				this.x[dec.rd] = this.x[dec.rs1] << (dec.imm & 0b11111);
+				this.x[dec.rd] = this.x[dec.rs1] << (dec.imm.unsigned & 0b11111);
 				break;
 			case 0x5:
-				switch (dec.imm >> 5) {
+				switch (dec.imm.unsigned >> 5) {
 				case 0x00:  // srli (shift right logical immediate) todo test
-					this.x[dec.rd] = this.x[dec.rs1] >> (dec.imm & 0b11111);
+					this.x[dec.rd] = this.x[dec.rs1] >> (dec.imm.unsigned & 0b11111);
 					break;
 				case 0x20:  // srai (shift right arithmetic immediate) todo do msb, test
-					this.x[dec.rd] = this.x[dec.rs1] >> (dec.imm & 0b11111);
+					this.x[dec.rd] = this.x[dec.rs1] >> (dec.imm.unsigned & 0b11111);
 					break;
 				default:
 					this.decodeError(dec);
 					break;
 				}
 				break;
-			case 0x2: // slti (set less than immediate) todo do msb, test
-				this.x[dec.rd] = this.x[dec.rs1] < dec.imm ? 1 : 0;
+			case 0x2: // slti (set less than immediate) todo do reg value msb, test
+				this.x[dec.rd] = this.x[dec.rs1] < dec.imm.signed ? 1 : 0;
 				break;
-			case 0x3: // sltiu (set less than immediate unsigned) todo do msb, test
-				this.x[dec.rd] = this.x[dec.rs1] < dec.imm ? 1 : 0;
+			case 0x3: // sltiu (set less than immediate unsigned) todo do reg value msb, test
+				this.x[dec.rd] = this.x[dec.rs1] < dec.imm.unsigned ? 1 : 0;
 				break;
 			default:
 				this.decodeError(dec);
@@ -435,21 +493,22 @@ let cpu = {
 		case 0b0000011:  // load instructions (I-type)
 			dec = this.decode.i(instr);
 			/* TODO is imm signed? */
+			let i_addr = this.x[dec.rs1] + dec.imm.signed;
 			switch (dec.funct3) {
 			case 0x0:  // lb (load byte)
-				this.x[dec.rd] = mem.read(this.x[dec.rs1] + dec.imm) & 0xFF;  // TODO sign extend, test
+				this.x[dec.rd] = util.signExtend(8, mem.read(i_addr) & 0xFF);  // TODO test
 				break;
 			case 0x1:  // lh (load half-word)
-				this.x[dec.rd] = mem.read(this.x[dec.rs1] + dec.imm) & 0xFFFF;  // TODO sign extend, test
+				this.x[dec.rd] = util.signExtend(16, mem.read(i_addr) & 0xFFFF);  // TODO test
 				break;
 			case 0x2:  // lw (load word)
-				this.x[dec.rd] = mem.read(this.x[dec.rs1] + dec.imm);  // TODO test
+				this.x[dec.rd] = mem.read(i_addr);  // TODO test
 				break;
 			case 0x4:  // lbu (load byte unsigned)
-				this.x[dec.rd] = mem.read(this.x[dec.rs1] + dec.imm) & 0xFF;  // TODO test
+				this.x[dec.rd] = mem.read(i_addr) & 0xFF;  // TODO test
 				break;
 			case 0x5:  // lh (load half-word unsigned)
-				this.x[dec.rd] = mem.read(this.x[dec.rs1] + dec.imm) & 0xFFFF;  // TODO test
+				this.x[dec.rd] = mem.read(i_addr) & 0xFFFF;  // TODO test
 				break;
 			default:
 				this.decodeError(dec);
@@ -458,17 +517,18 @@ let cpu = {
 			break;
 		case 0b0100011:  // store instructions (S-type)
 			dec = this.decode.s(instr);
-			let addr = this.x[dec.rs1] + dec.imm;
-			let data = this.x[dec.rs2];
+			/* TODO is imm signed? */
+			let s_addr = this.x[dec.rs1] + dec.imm.signed;
+			let s_data = this.x[dec.rs2];
 			switch (dec.funct3) {
 			case 0x0:  // sb (store byte)
-				mem.write(addr, data & 0xFF);  // TODO what about mem [31:8]?, test
+				mem.write(s_addr, s_data & 0xFF);  // TODO what about mem [31:8]?, test
 				break;
 			case 0x1:  // sh (store half)
-				mem.write(addr, data & 0xFFFF);  // TODO what about mem [31:16]?, test
+				mem.write(s_addr, s_data & 0xFFFF);  // TODO what about mem [31:16]?, test
 				break;
 			case 0x2:  // sw (store word)
-				mem.write(addr, data);  // TODO test
+				mem.write(s_addr, s_data);  // TODO test
 				break;
 			default:
 				this.decodeError(dec);
@@ -477,32 +537,34 @@ let cpu = {
 			break;
 		case 0b1100011:  // branch instructions (B-type)
 			dec = this.decode.b(instr);
+			/* TODO is imm signed? */
+			let b_offset = dec.imm.signed;
 			switch (dec.funct3) {
 			case 0x0:  // beq (branch if equal)
 				// TODO test
 				if (this.x[dec.rs1] == this.x[dec.rs2]) {
-					this.pc += dec.imm;
+					this.pc += b_offset;
 					wasJump = true;
 				}
 				break;
 			case 0x1:  // bne (branch if not equal)
 				// TODO test
 				if (this.x[dec.rs1] != this.x[dec.rs2]) {
-					this.pc += dec.imm;
+					this.pc += b_offset;
 					wasJump = true;
 				}
 				break;
 			case 0x4:  // blt (branch if less than)
 				// TODO test
 				if (this.x[dec.rs1] < this.x[dec.rs2]) {
-					this.pc += dec.imm;
+					this.pc += b_offset;
 					wasJump = true;
 				}
 				break;
 			case 0x5:  // bge (branch if greater than or equal)
 				// TODO test
 				if (this.x[dec.rs1] >= this.x[dec.rs2]) {
-					this.pc += dec.imm;
+					this.pc += b_offset;
 					wasJump = true;
 				}
 				break;
@@ -514,7 +576,7 @@ let cpu = {
 		case 0b1101111:  // jal (jump and link) instruction (J-type)
 			dec = this.decode.j(instr);
 			this.x[dec.rd] = this.pc + 4;
-			this.pc += dec.imm;
+			this.pc += dec.imm.unsigned;
 			wasJump = true;
 			break;
 		case 0b1100111:  // jump and link instructions (I-type)
@@ -522,7 +584,7 @@ let cpu = {
 			switch (dec.funct3) {
 			case 0x0:  // jalr (jump and link with register)
 				this.x[dec.rd] = this.pc + 4;
-				this.pc = this.x[dec.rs1] + util.signExtend(12, dec.imm);
+				this.pc = this.x[dec.rs1] + dec.imm.signed;
 				wasJump = true;
 				break;
 			default:
@@ -533,20 +595,35 @@ let cpu = {
 		case 0b0110111:  // lui (load upper immediate) instruction (U-type)
 			// TODO test
 			dec = this.decode.u(instr);
-			this.x[dec.rd] = dec.imm << 12;
+			this.x[dec.rd] = dec.imm.unsigned << 12;
 			break;
 		case 0b0010111:  // auipc (add upper immediate to PC) instruction (U-type)
 			// TODO test
 			dec = this.decode.u(instr);
-			this.x[dec.rd] = this.pc + (dec.imm << 12);
+			this.x[dec.rd] = this.pc + (dec.imm.unsigned << 12);
 			break;
 		case 0b1110011:  // system instructions (I-type)
 			dec = this.decode.i(instr);
 			switch (dec.funct3) {
-			case 0x0:  // ecall and ebreak
-				// todo ecall vs ebreak
-				console.log("break!");
-				this.brk();
+			case 0x0:
+				// TODO verify?: (i=0b001100001000, rs1=(1|0), rd=0)
+				switch (dec.imm.unsigned) {
+				case 0x001:  // ebreak instruction
+					console.log("break!");
+					this.brk();
+					break;
+				case 0x105:  // wfi (wait for interrupt) instruction
+					this.wfiSet = true;
+					break;
+				case 0x302:  // mret (return from machine mode) instruction
+					this.pc = this.interruptReturnAddress;
+					wasJump = true;  // TODO setPC function
+					this.interruptRunning = false;
+					break;
+				default:
+					this.decodeError(dec);
+					break;
+				}
 				break;
 			case 0x5:  // csrrwi (control and status register read write immediate) instruction
 				// TODO verify?: (i=0b001100001000, rs1=(1|0), rd=0)
@@ -571,7 +648,11 @@ let cpu = {
 	},
 
 	interrupt: function interrupt(intNo) {
-		console.log("TODO interrupt " + intNo + " asserted");
+		this.wfiSet = false;
+
+		this.interruptsPending |= (1 << intNo);
+
+		console.log("DEBUG interrupt " + intNo + " set");
 	},
 };
 
@@ -681,6 +762,7 @@ let serial = {
 	},
 };
 
+// TODO stop timer while CPU is in break mode
 let timer = {
 	timers: [],
 
@@ -691,7 +773,7 @@ let timer = {
 				repeat: false,
 				load: 0,
 				fireCallback: function timer_fire() {
-					cpu.interrupt(i);
+					cpu.interrupt(1+i);
 				},
 				interval: null,
 			});
@@ -1162,6 +1244,7 @@ let ui = {
 			this.pcElement.innerText = util.hex32(cpu.pc);
 
 			// TODO have "running" state
+			// TODO have "sleeping" state
 			if (cpu.haltSet) {
 				this.stateElement.innerText = "halt";
 				this.stateElement.classList.remove("warning");
@@ -1206,6 +1289,8 @@ let ui = {
 
 			this.update();
 		},
+
+		// TODO stack viewer
 	},
 
 	mem: {
@@ -1314,6 +1399,8 @@ let ui = {
 		load: function load() {
 			this.fileInputElement.click();
 		},
+
+		// TODO clear button
 	},
 };
 
@@ -1552,6 +1639,8 @@ System:
 ebreak (break)
 csrw mie, 0 (disable interrupts)
 csrw mie, 1 (enable interrupts)
+mret (return from interrupt)
+wfi (wait for interrupt)
 
 ========================================
           ASSEMBLER DIRECTIVES
@@ -1566,8 +1655,13 @@ csrw mie, 1 (enable interrupts)
 0xFF100-FF1FF timer registers
 0xFF200-FF2FF sound registers
 0xFF300-FF3FF gamepad registers
-0xFF400-FFFxx reserved
-0xFFFxx-FFFFF interrupt vector addr.s
+0xFF400-FFFE7 reserved
+0xFFFE8 serial interrupt vector
+0xFFFEC timer 0 interrupt vector
+0xFFFF0 timer 1 interrupt vector
+0xFFFF4 timer 2 interrupt vector
+0xFFFF8 timer 3 interrupt vector
+0xFFFFC gamepad interrupt vector
 
 All registers are 32bit.
 
