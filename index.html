@@ -614,6 +614,7 @@ let cpu = {
 					break;
 				case 0x105:  // wfi (wait for interrupt) instruction
 					this.wfiSet = true;
+					ui.debug.update();
 					break;
 				case 0x302:  // mret (return from machine mode) instruction
 					this.pc = this.interruptReturnAddress;
@@ -649,11 +650,14 @@ let cpu = {
 
 	interrupt: function interrupt(intNo) {
 		this.wfiSet = false;
+		ui.debug.update();
 
 		this.interruptsPending |= (1 << intNo);
 
 		console.log("DEBUG interrupt " + intNo + " set");
 	},
+
+	// TODO onStateChange
 };
 
 let screen = {
@@ -1252,6 +1256,11 @@ let ui = {
 			}
 			else if (cpu.breakSet) {
 				this.stateElement.innerText = "break";
+				this.stateElement.classList.remove("error");
+				this.stateElement.classList.add("warning");
+			}
+			else if (cpu.wfiSet) {
+				this.stateElement.innerText = "sleep";
 				this.stateElement.classList.remove("error");
 				this.stateElement.classList.add("warning");
 			}
